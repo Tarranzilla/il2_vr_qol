@@ -127,6 +127,7 @@ bool OpenVrBackend::init(bool allowAutoLaunch) {
         overlayMode_ = true;
         createHudOverlay();
         createLaserOverlay();
+        createGizmoOverlays();
         return true;
     }
 
@@ -137,6 +138,7 @@ bool OpenVrBackend::init(bool allowAutoLaunch) {
         overlayMode_ = false;
         createHudOverlay();
         createLaserOverlay();
+        createGizmoOverlays();
         return true;
     }
 
@@ -146,6 +148,7 @@ bool OpenVrBackend::init(bool allowAutoLaunch) {
 }
 
 void OpenVrBackend::shutdown() {
+    destroyGizmoOverlays();
     destroyLaserOverlay();
     destroyHudOverlay();
     hudAnchored_ = false;
@@ -390,8 +393,209 @@ void OpenVrBackend::anchorHudToHead(
     applyHudTransform();
 }
 
+void OpenVrBackend::placeHudAtWorldPointFacingViewer(
+    const Vec3& centerPos,
+    const Vec3& viewerPos,
+    float widthM,
+    float aspectHOverW) {
+    const float dx = viewerPos.x - centerPos.x;
+    const float dy = centerPos.y - viewerPos.y;
+    const float dz = viewerPos.z - centerPos.z;
+    const float horizDist = std::sqrt(dx * dx + dz * dz);
+
+    const float yawDeg = (horizDist > 1e-4f)
+        ? (std::atan2(dx, dz) * (180.0f / 3.14159265358979323846f))
+        : extractYawDeg(hudSeatedPose_);
+    const float pitchRad = std::clamp(std::atan2(dy, std::max(horizDist, 0.10f)), -0.45f, 0.45f);
+    const float c = std::cos(pitchRad);
+    const float s = std::sin(pitchRad);
+
+    Mat34 tilt{};
+    tilt.m[0][0] = 1.0f;
+    tilt.m[1][1] = c;
+    tilt.m[1][2] = -s;
+    tilt.m[2][1] = s;
+    tilt.m[2][2] = c;
+
+    hudSeatedPose_ = multiply(makeHorizontalPose(centerPos, yawDeg), tilt);
+    hudWidthM_ = std::max(widthM, 0.20f);
+    hudHeightM_ = hudWidthM_ * std::clamp(aspectHOverW, 0.25f, 2.0f);
+    hudAnchored_ = true;
+    applyHudTransform();
+}
+
 void OpenVrBackend::setHudAspectRatio(float aspectHOverW) {
     hudHeightM_ = hudWidthM_ * std::clamp(aspectHOverW, 0.25f, 2.0f);
+}
+
+void OpenVrBackend::createGizmoOverlays() {
+    auto* overlay = vr::VROverlay();
+    if (overlay == nullptr) {
+        return;
+    }
+
+    constexpr uint32_t kSize = 64;
+    auto makeRgbaTexture = [&](bool isControllerArrows) {
+        std::vector<uint8_t> px(kSize * kSize * 4, 0);
+        auto setPx = [&](int x, int y, uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+            if (x < 0 || x >= static_cast<int>(kSize) || y < 0 || y >= static_cast<int>(kSize)) {
+                return;
+            }
+            const size_t idx = (static_cast<size_t>(y) * kSize + static_cast<size_t>(x)) * 4;
+            px[idx + 0] = r;
+            px[idx + 1] = g;
+            px[idx + 2] = b;
+            px[idx + 3] = a;
+        };
+
+        const float cx = 31.5f;
+        const float cy = 31.5f;
+        for (int y = 0; y < static_cast<int>(kSize); ++y) {
+            for (int x = 0; x < static_cast<int>(kSize); ++x) {
+                const float dx = static_cast<float>(x) - cx;
+                const float dy = static_cast<float>(y) - cy;
+                const float dist = std::sqrt(dx * dx + dy * dy);
+                if (dist >= 27.0f && dist <= 30.0f) {
+                    setPx(x, y, 220, 235, 255, 210);
+                }
+                if (dist <= 3.0f) {
+                    setPx(x, y, 255, 255, 255, 230);
+                }
+            }
+        }
+
+        if (isControllerArrows) {
+            // Forward (-Z -> up on XZ rotated plane): Cyan/Green arrow
+            for (int y = 3; y <= 31; ++y) {
+                for (int x = 30; x <= 33; ++x) {
+                    setPx(x, y, 40, 245, 210, 245);
+                }
+            }
+            for (int dy = 0; dy < 9; ++dy) {
+                for (int dx = -dy; dx <= dy; ++dx) {
+                    setPx(32 + dx, 2 + dy, 40, 255, 220, 255);
+                }
+            }
+            // Right (+X -> right on XZ plane): Orange/Red arrow
+            for (int x = 32; x <= 59; ++x) {
+                for (int y = 30; y <= 33; ++y) {
+                    setPx(x, y, 255, 115, 65, 245);
+                }
+            }
+            for (int dx = 0; dx < 8; ++dx) {
+                for (int dy = -dx; dy <= dx; ++dy) {
+                    setPx(61 - dx, 32 + dy, 255, 130, 80, 255);
+                }
+            }
+        } else {
+            // Crosshair reticle for anchored stick & throttle
+            for (int i = 10; i <= 53; ++i) {
+                for (int w = 30; w <= 33; ++w) {
+                    setPx(i, w, 255, 215, 60, 230);
+                    setPx(w, i, 255, 215, 60, 230);
+                }
+            }
+        }
+        return px;
+    };
+
+    const auto createOne = [&](uint64_t& handle, const char* key, const char* name, float widthM, std::vector<uint8_t>& px) {
+        if (handle != 0) {
+            return;
+        }
+        vr::VROverlayHandle_t h = vr::k_ulOverlayHandleInvalid;
+        if (overlay->CreateOverlay(key, name, &h) == vr::VROverlayError_None && h != vr::k_ulOverlayHandleInvalid) {
+            handle = h;
+            overlay->SetOverlayWidthInMeters(h, widthM);
+            overlay->SetOverlayAlpha(h, 0.90f);
+            overlay->SetOverlayInputMethod(h, vr::VROverlayInputMethod_None);
+            overlay->SetOverlayRaw(h, px.data(), kSize, kSize, 4);
+            overlay->HideOverlay(h);
+        }
+    };
+
+    auto ctrlTex = makeRgbaTexture(true);
+    auto anchorTex = makeRgbaTexture(false);
+    createOne(leftGizmoOverlayHandle_, "il2vr.qol.gizmo.left", "IL-2 VR Left Gizmo", 0.14f, ctrlTex);
+    createOne(rightGizmoOverlayHandle_, "il2vr.qol.gizmo.right", "IL-2 VR Right Gizmo", 0.14f, ctrlTex);
+    createOne(stickAnchorOverlayHandle_, "il2vr.qol.anchor.stick", "IL-2 VR Stick Anchor", 0.11f, anchorTex);
+    createOne(throttleAnchorOverlayHandle_, "il2vr.qol.anchor.throttle", "IL-2 VR Throttle Anchor", 0.11f, anchorTex);
+}
+
+void OpenVrBackend::destroyGizmoOverlays() {
+    auto* overlay = vr::VROverlay();
+    const auto destroyOne = [&](uint64_t& handle) {
+        if (handle != 0) {
+            if (overlay != nullptr) {
+                overlay->DestroyOverlay(handle);
+            }
+            handle = 0;
+        }
+    };
+    destroyOne(leftGizmoOverlayHandle_);
+    destroyOne(rightGizmoOverlayHandle_);
+    destroyOne(stickAnchorOverlayHandle_);
+    destroyOne(throttleAnchorOverlayHandle_);
+}
+
+void OpenVrBackend::updateHandGizmoOverlays(
+    bool visible,
+    const ControllerState& left,
+    const ControllerState& right) {
+    auto* overlay = vr::VROverlay();
+    if (overlay == nullptr) {
+        return;
+    }
+
+    // Rotate overlay quad -90 deg around local +X so quad +Y points along controller forward (-Z).
+    Mat34 flatXZ{};
+    flatXZ.m[0][0] = 1.0f;
+    flatXZ.m[1][2] = 1.0f;
+    flatXZ.m[2][1] = -1.0f;
+
+    const auto updateOne = [&](uint64_t handle, const ControllerState& c) {
+        if (handle == 0) {
+            return;
+        }
+        if (!visible || !c.valid) {
+            overlay->HideOverlay(handle);
+            return;
+        }
+        const vr::HmdMatrix34_t mat = toOvr(multiply(c.pose, flatXZ));
+        overlay->SetOverlayTransformAbsolute(handle, vr::TrackingUniverseStanding, &mat);
+        overlay->ShowOverlay(handle);
+    };
+
+    updateOne(leftGizmoOverlayHandle_, left);
+    updateOne(rightGizmoOverlayHandle_, right);
+}
+
+void OpenVrBackend::updateControlAnchorOverlays(
+    bool visible,
+    const Mat34& stickPose,
+    const Mat34& throttlePose,
+    bool stickHighlighted,
+    bool throttleHighlighted) {
+    auto* overlay = vr::VROverlay();
+    if (overlay == nullptr) {
+        return;
+    }
+    const auto updateOne = [&](uint64_t handle, const Mat34& pose, bool highlight) {
+        if (handle == 0) {
+            return;
+        }
+        if (!visible) {
+            overlay->HideOverlay(handle);
+            return;
+        }
+        const vr::HmdMatrix34_t mat = toOvr(pose);
+        overlay->SetOverlayWidthInMeters(handle, highlight ? 0.14f : 0.10f);
+        overlay->SetOverlayAlpha(handle, highlight ? 0.98f : 0.65f);
+        overlay->SetOverlayTransformAbsolute(handle, vr::TrackingUniverseStanding, &mat);
+        overlay->ShowOverlay(handle);
+    };
+    updateOne(stickAnchorOverlayHandle_, stickPose, stickHighlighted);
+    updateOne(throttleAnchorOverlayHandle_, throttlePose, throttleHighlighted);
 }
 
 void OpenVrBackend::updateLaserOverlay(

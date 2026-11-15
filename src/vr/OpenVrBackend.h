@@ -43,6 +43,11 @@ public:
         float downOffsetM = -0.10f,
         float widthM = 0.62f,
         float aspectHOverW = 680.0f / 960.0f);
+    void placeHudAtWorldPointFacingViewer(
+        const Vec3& centerPos,
+        const Vec3& viewerPos,
+        float widthM,
+        float aspectHOverW);
     void setHudAspectRatio(float aspectHOverW);
     bool isHudAnchored() const noexcept { return hudAnchored_; }
     const Mat34& hudSeatedPose() const noexcept { return hudSeatedPose_; }
@@ -54,18 +59,34 @@ public:
         const Vec3& startSeated,
         const Vec3& endSeated,
         const Vec3& viewerSeatedPos);
+    void updateHandGizmoOverlays(
+        bool visible,
+        const ControllerState& left,
+        const ControllerState& right);
+    void updateControlAnchorOverlays(
+        bool visible,
+        const Mat34& stickPose,
+        const Mat34& throttlePose,
+        bool stickHighlighted,
+        bool throttleHighlighted);
 
 private:
     void createHudOverlay();
     void destroyHudOverlay();
     void createLaserOverlay();
     void destroyLaserOverlay();
+    void createGizmoOverlays();
+    void destroyGizmoOverlays();
     void applyHudTransform();
 
     vr::IVRSystem* system_ = nullptr;
     bool overlayMode_ = false;
     uint64_t overlayHandle_ = 0;
     uint64_t laserOverlayHandle_ = 0;
+    uint64_t leftGizmoOverlayHandle_ = 0;
+    uint64_t rightGizmoOverlayHandle_ = 0;
+    uint64_t stickAnchorOverlayHandle_ = 0;
+    uint64_t throttleAnchorOverlayHandle_ = 0;
     bool overlayVisible_ = true;
     bool hudAnchored_ = false;
     Mat34 hudSeatedPose_ = Mat34::identity();
