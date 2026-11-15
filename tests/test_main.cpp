@@ -289,3 +289,99 @@ TEST_CASE("VTOL VR latched virtual throttle lever mapping", "[controls]") {
     CHECK(il2vr::computeVtolThrottleInput(0.20f, startPos, {-0.33f, 0.85f, -0.20f}, 90.0f, cfg)
         == Approx(0.70f).margin(1e-4f));
 }
+
+#include "core/LocaleManager.h"
+
+#include <nlohmann/json.hpp>
+
+#include <fstream>
+#include <set>
+
+TEST_CASE("TripleClickDetector detects 3 rapid presses and resets on timeout", "[controls]") {
+    il2vr::TripleClickDetector detector(0.45f);
+
+    CHECK_FALSE(detector.update(true, 0.02f));
+    CHECK(detector.clickCount() == 1);
+    // Holding button down must not trigger extra clicks.
+    CHECK_FALSE(detector.update(true, 0.10f));
+    CHECK(detector.clickCount() == 1);
+
+    CHECK_FALSE(detector.update(false, 0.05f));
+    CHECK_FALSE(detector.update(true, 0.10f));
+    CHECK(detector.clickCount() == 2);
+    CHECK_FALSE(detector.update(false, 0.05f));
+
+    // Third click within window triggers once and resets count.
+    CHECK(detector.update(true, 0.10f));
+    CHECK(detector.clickCount() == 0);
+    CHECK_FALSE(detector.update(false, 0.05f));
+
+    // Two clicks followed by timeout resets instead of triggering on third delayed click.
+    CHECK_FALSE(detector.update(true, 0.05f));
+    CHECK_FALSE(detector.update(false, 0.05f));
+    CHECK_FALSE(detector.update(true, 0.05f));
+    CHECK_FALSE(detector.update(false, 0.05f));
+    CHECK(detector.clickCount() == 2);
+    CHECK_FALSE(detector.update(true, 0.50f));
+    CHECK(detector.clickCount() == 1);
+}
+
+TEST_CASE("Euler angle extraction and anchored throttle mapping", "[math][controls]") {
+    const il2vr::EulerAnglesDeg idAng = il2vr::extractEulerAnglesDeg(il2vr::Mat34::identity());
+    CHECK(idAng.pitchDeg == Approx(0.0f).margin(1e-3f));
+    CHECK(idAng.yawDeg == Approx(0.0f).margin(1e-3f));
+    CHECK(idAng.rollDeg == Approx(0.0f).margin(1e-3f));
+
+    const il2vr::Mat34 yaw90 = il2vr::makeHorizontalPose({0.0f, 1.0f, 0.0f}, 90.0f);
+    const il2vr::EulerAnglesDeg yawAng = il2vr::extractEulerAnglesDeg(yaw90);
+    CHECK(yawAng.yawDeg == Approx(90.0f).margin(1e-3f));
+    CHECK(yawAng.pitchDeg == Approx(0.0f).margin(1e-3f));
+    CHECK(yawAng.rollDeg == Approx(0.0f).margin(1e-3f));
+
+    il2vr::VtolThrottleConfig cfg;
+    cfg.rangeM = 0.16f;
+    const il2vr::Vec3 anchor{-0.24f, 0.55f, -0.25f};
+    CHECK(il2vr::computeAnchoredThrottleInput(anchor, anchor, 0.0f, cfg) == Approx(0.50f).margin(1e-4f));
+    CHECK(il2vr::computeAnchoredThrottleInput(anchor, {-0.24f, 0.55f, -0.33f}, 0.0f, cfg) == Approx(1.0f).margin(1e-4f));
+    CHECK(il2vr::computeAnchoredThrottleInput(anchor, {-0.24f, 0.55f, -0.17f}, 0.0f, cfg) == Approx(0.0f).margin(1e-4f));
+    CHECK(il2vr::computeAnchoredThrottleInput(anchor, {-0.28f, 0.55f, -0.25f}, 90.0f, cfg) == Approx(0.75f).margin(1e-4f));
+}
+
+TEST_CASE("LocaleManager loads pt-BR and en-US with 100% key parity", "[i18n]") {
+    const auto localesDir = il2vr::LocaleManager::findLocalesDirectory();
+    REQUIRE_FALSE(localesDir.empty());
+
+    il2vr::LocaleManager mgr;
+    REQUIRE(mgr.discoverLocales(localesDir));
+    REQUIRE(mgr.availableLocales().size() >= 2);
+
+    REQUIRE(mgr.loadLocale("pt-BR"));
+    CHECK(mgr.activeLocaleCode() == "pt-BR");
+    CHECK(mgr.get("tab.languages", "") == "Idiomas");
+    CHECK(mgr.get("missing.key", "fallback_val") == "fallback_val");
+
+    REQUIRE(mgr.loadLocale("en-US"));
+    CHECK(mgr.activeLocaleCode() == "en-US");
+    CHECK(mgr.get("tab.languages", "") == "Languages");
+
+    auto loadKeys = [](const std::filesystem::path& filePath) {
+        std::ifstream in(filePath);
+        REQUIRE(in.is_open());
+        nlohmann::json root;
+        in >> root;
+        REQUIRE(root.contains("strings"));
+        REQUIRE(root["strings"].is_object());
+        std::set<std::string> keys;
+        for (const auto& [k, v] : root["strings"].items()) {
+            REQUIRE(v.is_string());
+            REQUIRE_FALSE(v.get<std::string>().empty());
+            keys.insert(k);
+        }
+        return keys;
+    };
+
+    const auto ptKeys = loadKeys(localesDir / "pt-BR.json");
+    const auto enKeys = loadKeys(localesDir / "en-US.json");
+    CHECK_FALSE(ptKeys.empty());
+    CHECK(ptKeys == enKeys);
+}
