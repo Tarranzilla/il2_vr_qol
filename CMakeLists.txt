@@ -16,6 +16,7 @@ find_path(OPENVR_INCLUDE_DIR NAMES openvr.h REQUIRED)
 find_library(OPENVR_LIBRARY NAMES openvr_api REQUIRED)
 
 add_library(il2vr_core STATIC
+    src/core/LocaleManager.cpp
     src/core/MathTypes.cpp
     src/vr/OpenVrBackend.cpp
     src/seat/SeatManager.cpp
