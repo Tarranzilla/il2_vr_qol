@@ -1,3 +1,4 @@
+#include "core/LocaleManager.h"
 #include "core/MathTypes.h"
 #include "output/KeyboardInjector.h"
 #include "output/VJoyClient.h"
@@ -8,6 +9,7 @@
 #include <imgui.h>
 #include <imgui_impl_dx11.h>
 #include <imgui_impl_win32.h>
+#include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
 #ifndef WIN32_LEAN_AND_MEAN
@@ -40,6 +42,142 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(
     HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 namespace {
+
+struct AppSettings {
+    std::string locale = "pt-BR";
+    bool showHandGizmo = false;
+    bool showAnchorMarkers = true;
+    bool vrMouseMode = false;
+    int controlStickMode = 0;
+};
+
+std::filesystem::path resolveConfigDir(const std::filesystem::path& localesDir) {
+    if (!localesDir.empty() && localesDir.has_parent_path()) {
+        return localesDir.parent_path();
+    }
+    std::error_code ec;
+    return std::filesystem::current_path(ec) / "config";
+}
+
+AppSettings loadAppSettings(const std::filesystem::path& path) {
+    AppSettings s{};
+    std::ifstream in(path);
+    if (!in.is_open()) {
+        return s;
+    }
+    try {
+        nlohmann::json j;
+        in >> j;
+        if (j.is_object()) {
+            s.locale = j.value("locale", s.locale);
+            s.showHandGizmo = j.value("showHandGizmo", s.showHandGizmo);
+            s.showAnchorMarkers = j.value("showAnchorMarkers", s.showAnchorMarkers);
+            s.vrMouseMode = j.value("vrMouseMode", s.vrMouseMode);
+            s.controlStickMode = j.value("controlStickMode", s.controlStickMode);
+        }
+    } catch (...) {
+    }
+    return s;
+}
+
+bool saveAppSettings(const std::filesystem::path& path, const AppSettings& s) {
+    std::error_code ec;
+    if (path.has_parent_path()) {
+        std::filesystem::create_directories(path.parent_path(), ec);
+    }
+    std::ofstream out(path, std::ios::trunc);
+    if (!out.is_open()) {
+        return false;
+    }
+    nlohmann::json j = {
+        {"locale", s.locale},
+        {"showHandGizmo", s.showHandGizmo},
+        {"showAnchorMarkers", s.showAnchorMarkers},
+        {"vrMouseMode", s.vrMouseMode},
+        {"controlStickMode", s.controlStickMode}
+    };
+    out << j.dump(2) << '\n';
+    return out.good();
+}
+
+nlohmann::json mat34ToJson(const il2vr::Mat34& m) {
+    nlohmann::json arr = nlohmann::json::array();
+    for (int r = 0; r < 3; ++r) {
+        for (int c = 0; c < 4; ++c) {
+            arr.push_back(m.m[r][c]);
+        }
+    }
+    return arr;
+}
+
+bool jsonToMat34(const nlohmann::json& j, il2vr::Mat34& out) {
+    if (!j.is_array() || j.size() != 12) {
+        return false;
+    }
+    for (int r = 0; r < 3; ++r) {
+        for (int c = 0; c < 4; ++c) {
+            const size_t idx = static_cast<size_t>(r * 4 + c);
+            if (!j[idx].is_number()) {
+                return false;
+            }
+            out.m[r][c] = j[idx].get<float>();
+        }
+    }
+    return true;
+}
+
+il2vr::ControlAnchors loadControlAnchors(const std::filesystem::path& path, bool& outCalibrated) {
+    il2vr::ControlAnchors anchors{};
+    outCalibrated = false;
+    std::ifstream in(path);
+    if (!in.is_open()) {
+        return anchors;
+    }
+    try {
+        nlohmann::json j;
+        in >> j;
+        if (j.is_object()) {
+            bool ok = false;
+            if (j.contains("stickPose")) {
+                ok = jsonToMat34(j["stickPose"], anchors.stickPose) || ok;
+            }
+            if (j.contains("throttlePose")) {
+                ok = jsonToMat34(j["throttlePose"], anchors.throttlePose) || ok;
+            }
+            outCalibrated = j.value("calibrated", ok);
+        }
+    } catch (...) {
+    }
+    return anchors;
+}
+
+bool saveControlAnchors(
+    const std::filesystem::path& path,
+    const il2vr::ControlAnchors& anchors,
+    bool calibrated) {
+    std::error_code ec;
+    if (path.has_parent_path()) {
+        std::filesystem::create_directories(path.parent_path(), ec);
+    }
+    std::ofstream out(path, std::ios::trunc);
+    if (!out.is_open()) {
+        return false;
+    }
+    nlohmann::json j = {
+        {"calibrated", calibrated},
+        {"stickPose", mat34ToJson(anchors.stickPose)},
+        {"throttlePose", mat34ToJson(anchors.throttlePose)}
+    };
+    out << j.dump(2) << '\n';
+    return out.good();
+}
+
+float vecDistance(const il2vr::Vec3& a, const il2vr::Vec3& b) noexcept {
+    const float dx = a.x - b.x;
+    const float dy = a.y - b.y;
+    const float dz = a.z - b.z;
+    return std::sqrt(dx * dx + dy * dy + dz * dz);
+}
 
 ID3D11Device* g_d3dDevice = nullptr;
 ID3D11DeviceContext* g_d3dContext = nullptr;
@@ -820,6 +958,18 @@ int main(int argc, char** argv) {
     il2vr::TelemetryListener telemetry;
     int telemetryPort = 4321;
 
+    il2vr::LocaleManager locale;
+    const std::filesystem::path localesDir = il2vr::LocaleManager::findLocalesDirectory();
+    const std::filesystem::path configDir = resolveConfigDir(localesDir);
+    const std::filesystem::path settingsPath = configDir / "settings.json";
+    const std::filesystem::path anchorsPath = configDir / "controls.anchors.json";
+    AppSettings appSettings = loadAppSettings(settingsPath);
+    if (!localesDir.empty()) {
+        locale.discoverLocales(localesDir);
+        locale.loadLocale(appSettings.locale);
+        appSettings.locale = locale.activeLocaleCode();
+    }
+
     const std::filesystem::path il2InputDir = detectIl2InputDir();
     int il2VJoyConfigId = detectIl2VJoyConfigId(il2InputDir);
     std::string il2SyncStatus;
@@ -870,12 +1020,36 @@ int main(int argc, char** argv) {
     float throttleGrabRefYawDeg = 0.0f;
     int lastThrottleDetent = 1;
 
-    // VR HUD Laser Raycaster state.
+    // VR HUD Laser Raycaster + Quest 3 Grab Bar state.
     float rayPitchOffsetDeg = -22.0f;
     il2vr::VrHand preferredRayHand = il2vr::VrHand::Right;
     bool vrHudWasHit = false;
     bool prevRayClickDown = false;
     bool pendingHudReanchor = false;
+    bool hudGrabActive = false;
+    il2vr::VrHand hudGrabHand = il2vr::VrHand::Right;
+    float hudGrabDistanceM = 0.65f;
+    bool hudCustomPlaced = false;
+
+    // Anchored Virtual Controls (v0.3.0), 3D Gizmo (v0.4.0), and VR Menu Mouse (v0.5.0).
+    il2vr::ControlStickMode controlStickMode = (appSettings.controlStickMode == 1)
+        ? il2vr::ControlStickMode::Anchored
+        : il2vr::ControlStickMode::Free;
+    bool anchorEditMode = false;
+    bool anchorsCalibrated = false;
+    il2vr::ControlAnchors controlAnchors = loadControlAnchors(anchorsPath, anchorsCalibrated);
+    bool anchorStickGrabbed = false;
+    bool anchorThrottleGrabbed = false;
+    il2vr::Mat34 anchorStickLocalOffset = il2vr::Mat34::identity();
+    il2vr::Mat34 anchorThrottleLocalOffset = il2vr::Mat34::identity();
+    bool prevNearStickAnchor = false;
+    bool prevNearThrottleAnchor = false;
+    bool showHandGizmo = appSettings.showHandGizmo;
+    bool showAnchorMarkers = appSettings.showAnchorMarkers;
+    bool vrMouseMode = appSettings.vrMouseMode;
+    bool prevVrMouseLeft = false;
+    bool prevVrMouseRight = false;
+    float vrMouseScrollAccum = 0.0f;
 
     // Isolated vJoy Auto-Bind / Calibration sweep state (eliminates 6DoF crosstalk in IL-2 wizard).
     enum class AutoBindAxis { None, RollX, PitchY, ThrottleZ, RudderRz };
@@ -895,6 +1069,27 @@ int main(int argc, char** argv) {
     bool prevLeftMenuBtn = false;
     bool prevLeftStickBtn = false;
     bool prevRightStickBtn = false;
+    il2vr::TripleClickDetector leftTripleClick(0.45f);
+    il2vr::TripleClickDetector rightTripleClick(0.45f);
+
+    auto saveCurrentSettings = [&]() {
+        appSettings.locale = locale.activeLocaleCode();
+        appSettings.showHandGizmo = showHandGizmo;
+        appSettings.showAnchorMarkers = showAnchorMarkers;
+        appSettings.vrMouseMode = vrMouseMode;
+        appSettings.controlStickMode = static_cast<int>(controlStickMode);
+        saveAppSettings(settingsPath, appSettings);
+    };
+
+    auto initDefaultAnchorsNearHmd = [&](const il2vr::Mat34& hmdPose) {
+        const il2vr::Vec3 hmdPos{hmdPose.m[0][3], hmdPose.m[1][3], hmdPose.m[2][3]};
+        const float hmdYaw = il2vr::extractYawDeg(hmdPose);
+        const il2vr::Mat34 hmdHoriz = il2vr::makeHorizontalPose(hmdPos, hmdYaw);
+        controlAnchors.stickPose = il2vr::makeHorizontalPose(
+            il2vr::transformPoint(hmdHoriz, {0.18f, -0.32f, -0.28f}), hmdYaw);
+        controlAnchors.throttlePose = il2vr::makeHorizontalPose(
+            il2vr::transformPoint(hmdHoriz, {-0.24f, -0.30f, -0.25f}), hmdYaw);
+    };
 
     auto sendIl2NativeRecenter = [&]() {
         std::thread([]() {
@@ -917,16 +1112,31 @@ int main(int argc, char** argv) {
 
     auto toggleOriginGrabMode = [&]() {
         originGrabModeEnabled = !originGrabModeEnabled;
+        if (originGrabModeEnabled) {
+            anchorEditMode = false;
+        }
         spaceDragActive = false;
         vtolStickGrabbed = false;
         vtolThrottleGrabbed = false;
+        anchorStickGrabbed = false;
+        anchorThrottleGrabbed = false;
         lastHotkeyAction = originGrabModeEnabled
-            ? "Modo: AJUSTAR ORIGEM (Grip Arrasta Mundo)"
-            : "Modo: PILOTAGEM VTOL VR";
+            ? "Modo: AJUSTAR ORIGEM 3D (3x R3)"
+            : "Modo: PILOTAGEM VTOL VR (3x R3)";
         if (vr.isInitialized()) {
-            vr.triggerHapticPulse(il2vr::VrHand::Left, originGrabModeEnabled ? 2800 : 1800);
+            vr.triggerHapticPulse(il2vr::VrHand::Right, originGrabModeEnabled ? 2800 : 1800);
         }
         playBeepAsync(originGrabModeEnabled ? 660 : 880, 55);
+    };
+
+    auto toggleVrHud = [&](const char* sourceTag) {
+        showVrHud = !showVrHud;
+        vr.setOverlayVisible(showVrHud);
+        if (showVrHud && !hudCustomPlaced && vr.isInitialized()) {
+            pendingHudReanchor = true;
+        }
+        lastHotkeyAction = std::string(showVrHud ? "HUD VR Aberto (" : "HUD VR Oculto (") + sourceTag + ")";
+        playBeepAsync(showVrHud ? 950 : 520, 50);
     };
 
     auto toggleVisibleTestOffset = [&]() {
@@ -957,24 +1167,21 @@ int main(int argc, char** argv) {
             } else {
                 seat.recenterNow();
             }
+            hudCustomPlaced = false;
             pendingHudReanchor = showVrHud;
             lastHotkeyAction = "Recentralizar (Hotkey)";
             playBeepAsync(1000, 60);
             break;
         case HotkeyAction::ResetOffset:
             seat.resetOffset();
-            pendingHudReanchor = showVrHud;
+            if (!hudCustomPlaced) {
+                pendingHudReanchor = showVrHud;
+            }
             lastHotkeyAction = "Zerar Offset (Hotkey)";
             playBeepAsync(600, 60);
             break;
         case HotkeyAction::ToggleHud:
-            showVrHud = !showVrHud;
-            vr.setOverlayVisible(showVrHud);
-            if (showVrHud && vrState.hmdValid) {
-                pendingHudReanchor = true;
-            }
-            lastHotkeyAction = showVrHud ? "HUD VR: Ligado (Hotkey)" : "HUD VR: Desligado (Hotkey)";
-            playBeepAsync(showVrHud ? 950 : 520, 50);
+            toggleVrHud("Hotkey");
             break;
         case HotkeyAction::VisibleTest:
             toggleVisibleTestOffset();
@@ -1170,33 +1377,35 @@ int main(int argc, char** argv) {
                 if (seat.recenterFromRawHmdPose(vrState.hmdRawPose)) {
                     vrState = vr.pollState();
                     lastHotkeyAction = "Origem recentralizada na cabeca (Botao Y)";
-                    pendingHudReanchor = showVrHud;
+                    if (!hudCustomPlaced) {
+                        pendingHudReanchor = showVrHud;
+                    }
                     vr.triggerHapticPulse(il2vr::VrHand::Left, 3000);
                     playBeepAsync(1040, 65);
                 }
             }
             prevLeftMenuBtn = leftMenuNow;
 
-            // Right thumbstick click (R3) -> Toggle HUD & anchor in front (leaves Button B free for IL-2!).
-            const bool rightStickNow = vrState.right.valid && vrState.right.secondaryBtn;
-            if (rightStickNow && !prevRightStickBtn) {
-                showVrHud = !showVrHud;
-                vr.setOverlayVisible(showVrHud);
-                if (showVrHud && vrState.hmdValid) {
-                    pendingHudReanchor = true;
-                }
-                lastHotkeyAction = showVrHud ? "HUD VR Aberto (R3)" : "HUD VR Oculto (R3)";
-                vr.triggerHapticPulse(il2vr::VrHand::Right, 2400);
-                playBeepAsync(showVrHud ? 950 : 520, 50);
-            }
-            prevRightStickBtn = rightStickNow;
-
-            // Left thumbstick click (L3) -> Toggle between VTOL VR Flight Mode and Origin Grab Mode.
+            // Left thumbstick triple-click (3x L3) -> Toggle VR HUD overlay.
             const bool leftStickNow = vrState.left.valid && vrState.left.secondaryBtn;
-            if (leftStickNow && !prevLeftStickBtn) {
-                toggleOriginGrabMode();
+            const bool l3Triple = leftTripleClick.update(leftStickNow, dtSeconds);
+            if (l3Triple) {
+                toggleVrHud("3x L3");
+                vr.triggerHapticPulse(il2vr::VrHand::Left, 2600);
+            } else if (leftStickNow && !prevLeftStickBtn && leftTripleClick.clickCount() > 0) {
+                vr.triggerHapticPulse(il2vr::VrHand::Left, 650);
             }
             prevLeftStickBtn = leftStickNow;
+
+            // Right thumbstick triple-click (3x R3) -> Toggle Flight <-> Edit VR Origin 3D.
+            const bool rightStickNow = vrState.right.valid && vrState.right.secondaryBtn;
+            const bool r3Triple = rightTripleClick.update(rightStickNow, dtSeconds);
+            if (r3Triple) {
+                toggleOriginGrabMode();
+            } else if (rightStickNow && !prevRightStickBtn && rightTripleClick.clickCount() > 0) {
+                vr.triggerHapticPulse(il2vr::VrHand::Right, 650);
+            }
+            prevRightStickBtn = rightStickNow;
 
             const bool leftGripNow = vrState.left.valid && vrState.left.grip;
             const bool rightGripNow = vrState.right.valid && vrState.right.grip;
@@ -1205,7 +1414,13 @@ int main(int argc, char** argv) {
                 return {c.rawPose.m[0][3], c.rawPose.m[1][3], c.rawPose.m[2][3]};
             };
 
-            if (originGrabModeEnabled) {
+            auto posOf = [](const il2vr::Mat34& pose) -> il2vr::Vec3 {
+                return {pose.m[0][3], pose.m[1][3], pose.m[2][3]};
+            };
+
+            const bool suppressControlGrabs = hudGrabActive;
+
+            if (originGrabModeEnabled && !suppressControlGrabs) {
                 // 3D Space Drag ("Agarrar no ar" via Left or Right Grip) -> 3D translation ONLY, zero yaw change.
                 if (!spaceDragActive) {
                     if (leftGripNow || rightGripNow) {
@@ -1246,7 +1461,7 @@ int main(int argc, char** argv) {
                         if ((now - lastDragCommitTime) >= std::chrono::milliseconds(33)) {
                             const auto& ctrl = (spaceDragHand == il2vr::VrHand::Left) ? vrState.left : vrState.right;
                             seat.setOffset(computeDraggedOffset(ctrl));
-                            if (showVrHud) {
+                            if (showVrHud && !hudCustomPlaced) {
                                 vrState = vr.pollState();
                                 pendingHudReanchor = true;
                             }
@@ -1265,7 +1480,7 @@ int main(int argc, char** argv) {
                         const auto& ctrl = (spaceDragHand == il2vr::VrHand::Left) ? vrState.left : vrState.right;
                         if (ctrl.valid) {
                             seat.setOffset(computeDraggedOffset(ctrl));
-                            if (showVrHud) {
+                            if (showVrHud && !hudCustomPlaced) {
                                 vrState = vr.pollState();
                                 pendingHudReanchor = true;
                             }
@@ -1275,18 +1490,104 @@ int main(int argc, char** argv) {
                         vr.triggerHapticPulse(spaceDragHand, 1200);
                     }
                 }
-            } else {
+            } else if (anchorEditMode && !suppressControlGrabs) {
                 spaceDragActive = false;
+                vtolStickGrabbed = false;
+                vtolThrottleGrabbed = false;
 
-                // VTOL VR 6DoF Virtual Flight Controls:
-                // Right Grip grabs 6DoF virtual control stick (returns to center when released).
+                if (!anchorsCalibrated && vrState.hmdValid) {
+                    initDefaultAnchorsNearHmd(vrState.hmdSeatedPose);
+                    anchorsCalibrated = true;
+                }
+
+                // Force neutral aircraft axes while pilot positions the virtual controls.
+                testStickX = 0.0f;
+                testStickY = 0.0f;
+                testRudder = 0.0f;
+                testThrottle = 0.5f;
+
+                if (rightGripNow && vrState.right.valid) {
+                    if (!anchorStickGrabbed) {
+                        anchorStickGrabbed = true;
+                        const float dist = vecDistance(posOf(vrState.right.pose), posOf(controlAnchors.stickPose));
+                        anchorStickLocalOffset = (dist < 0.25f)
+                            ? il2vr::multiply(il2vr::invertRigid(vrState.right.pose), controlAnchors.stickPose)
+                            : il2vr::Mat34::identity();
+                        vr.triggerHapticPulse(il2vr::VrHand::Right, 1700);
+                    }
+                    controlAnchors.stickPose = il2vr::multiply(vrState.right.pose, anchorStickLocalOffset);
+                    anchorsCalibrated = true;
+                } else if (anchorStickGrabbed) {
+                    anchorStickGrabbed = false;
+                    saveControlAnchors(anchorsPath, controlAnchors, anchorsCalibrated);
+                    vr.triggerHapticPulse(il2vr::VrHand::Right, 1100);
+                    lastHotkeyAction = "Ancora do Manche salva";
+                }
+
+                if (leftGripNow && vrState.left.valid) {
+                    if (!anchorThrottleGrabbed) {
+                        anchorThrottleGrabbed = true;
+                        const float dist = vecDistance(posOf(vrState.left.pose), posOf(controlAnchors.throttlePose));
+                        anchorThrottleLocalOffset = (dist < 0.25f)
+                            ? il2vr::multiply(il2vr::invertRigid(vrState.left.pose), controlAnchors.throttlePose)
+                            : il2vr::Mat34::identity();
+                        vr.triggerHapticPulse(il2vr::VrHand::Left, 1700);
+                    }
+                    controlAnchors.throttlePose = il2vr::multiply(vrState.left.pose, anchorThrottleLocalOffset);
+                    anchorsCalibrated = true;
+                } else if (anchorThrottleGrabbed) {
+                    anchorThrottleGrabbed = false;
+                    saveControlAnchors(anchorsPath, controlAnchors, anchorsCalibrated);
+                    vr.triggerHapticPulse(il2vr::VrHand::Left, 1100);
+                    lastHotkeyAction = "Ancora do Manete salva";
+                }
+
+                if (mirrorVrControllers && vjoy.isAcquired()) {
+                    vjoy.setAxisNormalized(il2vr::VJoyAxis::X, 0.0f);
+                    vjoy.setAxisNormalized(il2vr::VJoyAxis::Y, 0.0f);
+                    vjoy.setThrottleNormalized(il2vr::VJoyAxis::Z, 0.5f);
+                    vjoy.setAxisNormalized(il2vr::VJoyAxis::Rz, 0.0f);
+                }
+            } else if (!suppressControlGrabs && !originGrabModeEnabled && !anchorEditMode) {
+                spaceDragActive = false;
+                anchorStickGrabbed = false;
+                anchorThrottleGrabbed = false;
+
+                if (controlStickMode == il2vr::ControlStickMode::Anchored) {
+                    if (!anchorsCalibrated && vrState.hmdValid) {
+                        initDefaultAnchorsNearHmd(vrState.hmdSeatedPose);
+                        anchorsCalibrated = true;
+                    }
+                    const bool nearStick = vrState.right.valid
+                        && vecDistance(posOf(vrState.right.pose), posOf(controlAnchors.stickPose)) <= 0.14f;
+                    const bool nearThrottle = vrState.left.valid
+                        && vecDistance(posOf(vrState.left.pose), posOf(controlAnchors.throttlePose)) <= 0.14f;
+                    if (nearStick && !prevNearStickAnchor) {
+                        vr.triggerHapticPulse(il2vr::VrHand::Right, 900);
+                    }
+                    if (nearThrottle && !prevNearThrottleAnchor) {
+                        vr.triggerHapticPulse(il2vr::VrHand::Left, 900);
+                    }
+                    prevNearStickAnchor = nearStick;
+                    prevNearThrottleAnchor = nearThrottle;
+                } else {
+                    prevNearStickAnchor = false;
+                    prevNearThrottleAnchor = false;
+                }
+
+                // Virtual Control Stick (Right Grip): Free (6DoF at hand) or Anchored (fixed 3D anchor).
                 if (rightGripNow) {
                     if (!vtolStickGrabbed) {
                         vtolStickGrabbed = true;
-                        stickGrabStartPose = vrState.right.pose;
-                        stickGrabRefYawDeg = vrState.hmdValid
-                            ? il2vr::extractYawDeg(vrState.hmdSeatedPose)
-                            : il2vr::extractYawDeg(vrState.right.pose);
+                        if (controlStickMode == il2vr::ControlStickMode::Anchored) {
+                            stickGrabStartPose = controlAnchors.stickPose;
+                            stickGrabRefYawDeg = il2vr::extractYawDeg(controlAnchors.stickPose);
+                        } else {
+                            stickGrabStartPose = vrState.right.pose;
+                            stickGrabRefYawDeg = vrState.hmdValid
+                                ? il2vr::extractYawDeg(vrState.hmdSeatedPose)
+                                : il2vr::extractYawDeg(vrState.right.pose);
+                        }
                         stickFilterX.reset();
                         stickFilterY.reset();
                         rudderFilterRz.reset();
@@ -1335,28 +1636,35 @@ int main(int argc, char** argv) {
                     testRudder = rudderFilterRz.filter(thumbRudder, dtSeconds);
                 }
 
-                // Left Grip grabs virtual throttle lever (latches value when released).
+                // Virtual Throttle Lever (Left Grip): Free (latched displacement) or Anchored (absolute lever).
                 if (leftGripNow) {
-                    const il2vr::Vec3 curLeftPos{
-                        vrState.left.pose.m[0][3],
-                        vrState.left.pose.m[1][3],
-                        vrState.left.pose.m[2][3]
-                    };
+                    const il2vr::Vec3 curLeftPos = posOf(vrState.left.pose);
                     if (!vtolThrottleGrabbed) {
                         vtolThrottleGrabbed = true;
                         throttleGrabStartPos = curLeftPos;
                         throttleGrabStartVal = testThrottle;
                         throttleGrabRefYawDeg = vrState.hmdValid
                             ? il2vr::extractYawDeg(vrState.hmdSeatedPose)
-                            : il2vr::extractYawDeg(vrState.left.pose);
+                            : il2vr::extractYawDeg(
+                                (controlStickMode == il2vr::ControlStickMode::Anchored)
+                                    ? controlAnchors.throttlePose
+                                    : vrState.left.pose);
                         vr.triggerHapticPulse(il2vr::VrHand::Left, 1600);
                     }
-                    testThrottle = il2vr::computeVtolThrottleInput(
-                        throttleGrabStartVal,
-                        throttleGrabStartPos,
-                        curLeftPos,
-                        throttleGrabRefYawDeg,
-                        vtolThrottleCfg);
+                    if (controlStickMode == il2vr::ControlStickMode::Anchored) {
+                        testThrottle = il2vr::computeAnchoredThrottleInput(
+                            posOf(controlAnchors.throttlePose),
+                            curLeftPos,
+                            throttleGrabRefYawDeg,
+                            vtolThrottleCfg);
+                    } else {
+                        testThrottle = il2vr::computeVtolThrottleInput(
+                            throttleGrabStartVal,
+                            throttleGrabStartPos,
+                            curLeftPos,
+                            throttleGrabRefYawDeg,
+                            vtolThrottleCfg);
+                    }
 
                     int newDetent = -1;
                     if (testThrottle <= 0.02f) {
@@ -1394,9 +1702,16 @@ int main(int argc, char** argv) {
             prevLeftMenuBtn = false;
             prevLeftStickBtn = false;
             prevRightStickBtn = false;
+            leftTripleClick.reset();
+            rightTripleClick.reset();
             spaceDragActive = false;
             vtolStickGrabbed = false;
             vtolThrottleGrabbed = false;
+            anchorStickGrabbed = false;
+            anchorThrottleGrabbed = false;
+            hudGrabActive = false;
+            prevNearStickAnchor = false;
+            prevNearThrottleAnchor = false;
         }
 
         if (autoBindAxis != AutoBindAxis::None) {
@@ -1447,8 +1762,7 @@ int main(int argc, char** argv) {
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
 
-        // Update HUD anchor & VR controller raycaster between Win32_NewFrame and ImGui::NewFrame
-        // so ImGui uses exact DisplaySize and receives VR laser mouse input cleanly.
+        // Update HUD anchor, Grab Bar, 3D Gizmos, VR Mouse, and VR raycaster between Win32_NewFrame and ImGui::NewFrame.
         std::optional<il2vr::HudQuadHit> vrHudHit;
         il2vr::VrHand activeRayHand = preferredRayHand;
         if (vr.isInitialized() && vrState.runtimeRunning) {
@@ -1463,8 +1777,64 @@ int main(int argc, char** argv) {
                 pendingHudReanchor = false;
             }
 
-            const bool anyGrabActive = spaceDragActive || vtolStickGrabbed || vtolThrottleGrabbed;
-            if (showVrHud && vrState.hmdValid && !anyGrabActive) {
+            vr.updateHandGizmoOverlays(showHandGizmo, vrState.left, vrState.right);
+            const bool anchorsVisible = anchorEditMode
+                || (showAnchorMarkers && controlStickMode == il2vr::ControlStickMode::Anchored);
+            const bool stickHighlighted = anchorStickGrabbed
+                || (controlStickMode == il2vr::ControlStickMode::Anchored && (vtolStickGrabbed || prevNearStickAnchor));
+            const bool throttleHighlighted = anchorThrottleGrabbed
+                || (controlStickMode == il2vr::ControlStickMode::Anchored && (vtolThrottleGrabbed || prevNearThrottleAnchor));
+            vr.updateControlAnchorOverlays(
+                anchorsVisible,
+                controlAnchors.stickPose,
+                controlAnchors.throttlePose,
+                stickHighlighted,
+                throttleHighlighted);
+
+            const il2vr::Vec3 eyePos{
+                vrState.hmdSeatedPose.m[0][3],
+                vrState.hmdSeatedPose.m[1][3],
+                vrState.hmdSeatedPose.m[2][3]
+            };
+
+            auto releaseVrMouseButtons = [&]() {
+                if (prevVrMouseLeft) {
+                    il2vr::KeyboardInjector::sendMouseButton(true, false);
+                    prevVrMouseLeft = false;
+                }
+                if (prevVrMouseRight) {
+                    il2vr::KeyboardInjector::sendMouseButton(false, false);
+                    prevVrMouseRight = false;
+                }
+                vrMouseScrollAccum = 0.0f;
+            };
+
+            const bool anyGrabActive = spaceDragActive || vtolStickGrabbed || vtolThrottleGrabbed
+                || anchorStickGrabbed || anchorThrottleGrabbed;
+
+            if (hudGrabActive) {
+                releaseVrMouseButtons();
+                const auto& grabCtrl = (hudGrabHand == il2vr::VrHand::Left) ? vrState.left : vrState.right;
+                const bool grabHold = grabCtrl.valid && (grabCtrl.triggerClick || grabCtrl.grip);
+                if (showVrHud && vrState.hmdValid && grabHold) {
+                    const il2vr::Ray ray = makeControllerRay(grabCtrl.pose, rayPitchOffsetDeg);
+                    hudGrabDistanceM = std::clamp(hudGrabDistanceM + grabCtrl.joyY * 0.90f * dtSeconds, 0.35f, 1.60f);
+                    const il2vr::Vec3 targetCenter{
+                        ray.origin.x + ray.dir.x * hudGrabDistanceM,
+                        ray.origin.y + ray.dir.y * hudGrabDistanceM,
+                        ray.origin.z + ray.dir.z * hudGrabDistanceM
+                    };
+                    vr.placeHudAtWorldPointFacingViewer(targetCenter, eyePos, vr.hudWidthM(), aspectHOverW);
+                    vr.updateLaserOverlay(true, ray.origin, targetCenter, eyePos);
+                    ImGui::GetIO().AddMouseButtonEvent(0, false);
+                    prevRayClickDown = false;
+                } else {
+                    hudGrabActive = false;
+                    vr.triggerHapticPulse(hudGrabHand, 1000);
+                    lastHotkeyAction = "HUD reposicionado";
+                    vr.updateLaserOverlay(false, {}, {}, {});
+                }
+            } else if ((showVrHud || vrMouseMode) && vrState.hmdValid && !anyGrabActive) {
                 auto tryHand = [&](il2vr::VrHand hand) -> std::optional<std::pair<il2vr::Ray, il2vr::HudQuadHit>> {
                     const auto& ctrl = (hand == il2vr::VrHand::Left) ? vrState.left : vrState.right;
                     if (!ctrl.valid) {
@@ -1482,43 +1852,115 @@ int main(int argc, char** argv) {
                 const il2vr::VrHand otherHand = (preferredRayHand == il2vr::VrHand::Right)
                     ? il2vr::VrHand::Left
                     : il2vr::VrHand::Right;
-                auto best = tryHand(preferredRayHand);
-                if (best.has_value()) {
-                    activeRayHand = preferredRayHand;
-                } else {
-                    best = tryHand(otherHand);
+                std::optional<std::pair<il2vr::Ray, il2vr::HudQuadHit>> best;
+                if (showVrHud) {
+                    best = tryHand(preferredRayHand);
                     if (best.has_value()) {
-                        activeRayHand = otherHand;
-                        preferredRayHand = otherHand;
+                        activeRayHand = preferredRayHand;
+                    } else {
+                        best = tryHand(otherHand);
+                        if (best.has_value()) {
+                            activeRayHand = otherHand;
+                            preferredRayHand = otherHand;
+                        }
                     }
                 }
 
                 if (best.has_value()) {
+                    releaseVrMouseButtons();
                     vrHudHit = best->second;
                     const float mouseX = vrHudHit->u * disp.x;
                     const float mouseY = vrHudHit->v * disp.y;
                     const auto& pointingCtrl = (activeRayHand == il2vr::VrHand::Left)
                         ? vrState.left
                         : vrState.right;
+                    const float grabBarVMin = (disp.y > 60.0f) ? ((disp.y - 42.0f) / disp.y) : 0.90f;
+                    const bool onGrabBar = (vrHudHit->v >= grabBarVMin);
                     const bool clickDown = pointingCtrl.triggerClick || pointingCtrl.primaryBtn;
 
-                    ImGuiIO& io = ImGui::GetIO();
-                    io.MouseDrawCursor = false;
-                    io.AddMousePosEvent(mouseX, mouseY);
-                    io.AddMouseButtonEvent(0, clickDown);
+                    if (onGrabBar && (pointingCtrl.triggerClick || pointingCtrl.grip)) {
+                        hudGrabActive = true;
+                        hudGrabHand = activeRayHand;
+                        hudGrabDistanceM = std::clamp(vrHudHit->distance, 0.35f, 1.60f);
+                        hudCustomPlaced = true;
+                        spaceDragActive = false;
+                        vtolStickGrabbed = false;
+                        vtolThrottleGrabbed = false;
+                        anchorStickGrabbed = false;
+                        anchorThrottleGrabbed = false;
+                        ImGui::GetIO().AddMouseButtonEvent(0, false);
+                        prevRayClickDown = false;
+                        vr.triggerHapticPulse(activeRayHand, 1800);
+                        vr.updateLaserOverlay(true, best->first.origin, vrHudHit->worldPoint, eyePos);
+                    } else {
+                        ImGuiIO& io = ImGui::GetIO();
+                        io.MouseDrawCursor = false;
+                        io.AddMousePosEvent(mouseX, mouseY);
+                        io.AddMouseButtonEvent(0, clickDown);
 
-                    if (!vrHudWasHit || (clickDown && !prevRayClickDown)) {
-                        vr.triggerHapticPulse(activeRayHand, clickDown ? 1500 : 700);
+                        if (!vrHudWasHit || (clickDown && !prevRayClickDown)) {
+                            vr.triggerHapticPulse(activeRayHand, clickDown ? 1500 : 700);
+                        }
+                        prevRayClickDown = clickDown;
+                        vr.updateLaserOverlay(true, best->first.origin, vrHudHit->worldPoint, eyePos);
                     }
-                    prevRayClickDown = clickDown;
+                } else if (vrMouseMode) {
+                    if (vrHudWasHit) {
+                        ImGui::GetIO().AddMouseButtonEvent(0, false);
+                    }
+                    prevRayClickDown = false;
 
-                    const il2vr::Vec3 eyePos{
-                        vrState.hmdSeatedPose.m[0][3],
-                        vrState.hmdSeatedPose.m[1][3],
-                        vrState.hmdSeatedPose.m[2][3]
-                    };
-                    vr.updateLaserOverlay(true, best->first.origin, vrHudHit->worldPoint, eyePos);
+                    const il2vr::VrHand mouseHand = (preferredRayHand == il2vr::VrHand::Right && vrState.right.valid)
+                        ? il2vr::VrHand::Right
+                        : (vrState.left.valid ? il2vr::VrHand::Left : il2vr::VrHand::Right);
+                    const auto& mouseCtrl = (mouseHand == il2vr::VrHand::Left) ? vrState.left : vrState.right;
+                    if (mouseCtrl.valid) {
+                        const float hmdYaw = il2vr::extractYawDeg(vrState.hmdSeatedPose);
+                        const il2vr::Mat34 hmdHoriz = il2vr::makeHorizontalPose(eyePos, hmdYaw);
+                        const il2vr::Vec3 fwd{-hmdHoriz.m[0][2], 0.0f, -hmdHoriz.m[2][2]};
+                        const il2vr::Vec3 screenCenter{
+                            eyePos.x + fwd.x * 0.90f,
+                            eyePos.y - 0.04f,
+                            eyePos.z + fwd.z * 0.90f
+                        };
+                        const il2vr::Mat34 screenPose = il2vr::makeHorizontalPose(screenCenter, hmdYaw);
+                        const il2vr::Ray ray = makeControllerRay(mouseCtrl.pose, rayPitchOffsetDeg);
+                        const auto screenHit = il2vr::intersectRayHudQuad(ray, screenPose, 1.50f, 0.90f);
+                        if (screenHit.has_value()) {
+                            il2vr::KeyboardInjector::sendMouseMoveNormalized(screenHit->u, screenHit->v);
+                            const bool leftDown = mouseCtrl.triggerClick;
+                            const bool rightDown = mouseCtrl.primaryBtn;
+                            if (leftDown != prevVrMouseLeft) {
+                                il2vr::KeyboardInjector::sendMouseButton(true, leftDown);
+                                vr.triggerHapticPulse(mouseHand, leftDown ? 1200 : 700);
+                                prevVrMouseLeft = leftDown;
+                            }
+                            if (rightDown != prevVrMouseRight) {
+                                il2vr::KeyboardInjector::sendMouseButton(false, rightDown);
+                                vr.triggerHapticPulse(mouseHand, rightDown ? 1200 : 700);
+                                prevVrMouseRight = rightDown;
+                            }
+                            if (std::abs(mouseCtrl.joyY) > 0.35f) {
+                                vrMouseScrollAccum += mouseCtrl.joyY * dtSeconds * 6.0f;
+                                const int steps = static_cast<int>(vrMouseScrollAccum);
+                                if (steps != 0) {
+                                    il2vr::KeyboardInjector::sendMouseWheel(steps * 120);
+                                    vrMouseScrollAccum -= static_cast<float>(steps);
+                                }
+                            } else {
+                                vrMouseScrollAccum = 0.0f;
+                            }
+                            vr.updateLaserOverlay(true, ray.origin, screenHit->worldPoint, eyePos);
+                        } else {
+                            releaseVrMouseButtons();
+                            vr.updateLaserOverlay(false, {}, {}, {});
+                        }
+                    } else {
+                        releaseVrMouseButtons();
+                        vr.updateLaserOverlay(false, {}, {}, {});
+                    }
                 } else {
+                    releaseVrMouseButtons();
                     if (vrHudWasHit) {
                         ImGui::GetIO().AddMouseButtonEvent(0, false);
                     }
@@ -1526,6 +1968,7 @@ int main(int argc, char** argv) {
                     vr.updateLaserOverlay(false, {}, {}, {});
                 }
             } else {
+                releaseVrMouseButtons();
                 if (vrHudWasHit) {
                     ImGui::GetIO().AddMouseButtonEvent(0, false);
                 }
@@ -1534,7 +1977,8 @@ int main(int argc, char** argv) {
             }
             vrHudWasHit = vrHudHit.has_value();
 
-            if (autoBindAxis == AutoBindAxis::None && !originGrabModeEnabled && mirrorVrControllers && vjoy.isAcquired()) {
+            if (autoBindAxis == AutoBindAxis::None && !originGrabModeEnabled && !anchorEditMode
+                && !hudGrabActive && !vrMouseMode && mirrorVrControllers && vjoy.isAcquired()) {
                 const bool rightBlockedByHud =
                     showVrHud && vrHudHit.has_value() && activeRayHand == il2vr::VrHand::Right;
                 const bool leftBlockedByHud =
@@ -1548,6 +1992,15 @@ int main(int argc, char** argv) {
                 vjoy.setButton(3, false);
             }
         } else {
+            if (prevVrMouseLeft) {
+                il2vr::KeyboardInjector::sendMouseButton(true, false);
+                prevVrMouseLeft = false;
+            }
+            if (prevVrMouseRight) {
+                il2vr::KeyboardInjector::sendMouseButton(false, false);
+                prevVrMouseRight = false;
+            }
+            vrMouseScrollAccum = 0.0f;
             if (vrHudWasHit) {
                 ImGui::GetIO().AddMouseButtonEvent(0, false);
             }
@@ -1559,26 +2012,29 @@ int main(int argc, char** argv) {
 
         const ImVec2 canvas = ImGui::GetIO().DisplaySize;
         const float halfW = std::max(300.0f, (canvas.x - 24.0f) * 0.5f);
-        const float fullH = std::max(300.0f, canvas.y - 16.0f);
+        const float fullH = std::max(300.0f, canvas.y - 52.0f);
 
         ImGui::SetNextWindowPos(ImVec2(8.0f, 8.0f), ImGuiCond_Always);
         ImGui::SetNextWindowSize(ImVec2(halfW, fullH), ImGuiCond_Always);
+        const std::string winP1Title = std::string(locale.tr("win.p1.title", "Pilar 1 - Posicionamento & Origem IL-2")) + "###Pilar1";
         ImGui::Begin(
-            "Pilar 1 - Posicionamento & Origem IL-2",
+            winP1Title.c_str(),
             nullptr,
             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
 
-        // Prominent Mode Toggle button (clickable with VR laser or L3).
+        // Prominent Mode Toggle button (clickable with VR laser or 3x R3).
         ImGui::PushStyleColor(
             ImGuiCol_Button,
             originGrabModeEnabled ? ImVec4(0.75f, 0.38f, 0.08f, 1.0f) : ImVec4(0.10f, 0.50f, 0.42f, 1.0f));
         ImGui::PushStyleColor(
             ImGuiCol_ButtonHovered,
             originGrabModeEnabled ? ImVec4(0.88f, 0.48f, 0.14f, 1.0f) : ImVec4(0.15f, 0.65f, 0.55f, 1.0f));
-        const char* modeBtnLabel = originGrabModeEnabled
-            ? "MODO: AJUSTAR ORIGEM (Grip = Arrastar Mundo) [L3]"
-            : "MODO: PILOTAGEM VTOL VR (Grip = Manche/Manete) [L3]";
-        if (ImGui::Button(modeBtnLabel, ImVec2(-1.0f, 40.0f))) {
+        const std::string modeBtnLabel = std::string(locale.tr(
+            originGrabModeEnabled ? "mode.origin.active" : "mode.origin.inactive",
+            originGrabModeEnabled
+                ? "MODO: AJUSTAR ORIGEM 3D (Grip = Arrastar Mundo) [3x R3]"
+                : "MODO: VOAR / PILOTAGEM (Grip = Manche/Manete) [3x R3]")) + "###ModeBtn";
+        if (ImGui::Button(modeBtnLabel.c_str(), ImVec2(-1.0f, 38.0f))) {
             toggleOriginGrabMode();
         }
         ImGui::PopStyleColor(2);
@@ -1586,40 +2042,42 @@ int main(int argc, char** argv) {
         if (il2Pid != 0) {
             ImGui::TextColored(
                 ImVec4(0.35f, 0.95f, 0.55f, 1.0f),
-                "SteamVR: %s (Ovl:%s) | IL-2: RODANDO (PID %u) | HUD: %s",
-                vr.isInitialized() ? "CONECTADO" : "AGUARDANDO",
-                vr.isOverlayMode() ? "Sim" : "Nao",
+                "SteamVR: %s (Ovl:%s) | IL-2: PID %u | HUD: %s",
+                vr.isInitialized() ? "OK" : "--",
+                vr.isOverlayMode() ? "On" : "Off",
                 il2Pid,
-                showVrHud ? "VISIVEL" : "OCULTO");
+                showVrHud ? "On" : "Off");
         } else {
             ImGui::Text(
-                "SteamVR: %s (Ovl:%s) | IL-2: Aguardando | HUD: %s",
-                vr.isInitialized() ? "CONECTADO" : "AGUARDANDO",
-                vr.isOverlayMode() ? "Sim" : "Nao",
-                showVrHud ? "VISIVEL" : "OCULTO");
+                "SteamVR: %s (Ovl:%s) | IL-2: -- | HUD: %s",
+                vr.isInitialized() ? "OK" : "--",
+                vr.isOverlayMode() ? "On" : "Off",
+                showVrHud ? "On" : "Off");
         }
         if (!vr.isInitialized()) {
             ImGui::TextWrapped("Status: %s", vr.lastError().c_str());
-            if (ImGui::Button("Conectar ao SteamVR Agora", ImVec2(-1.0f, 32.0f))) {
+            if (ImGui::Button(locale.tr("btn.connect_steamvr", "Conectar ao SteamVR Agora"), ImVec2(-1.0f, 30.0f))) {
                 if (vr.init(false)) {
                     vr.setOverlayVisible(showVrHud);
                     seat.attachBackend(&vr);
-                    pendingHudReanchor = showVrHud;
+                    if (!hudCustomPlaced) {
+                        pendingHudReanchor = showVrHud;
+                    }
                 }
             }
         } else {
             if (vrState.hmdValid) {
-                ImGui::Text("HMD(%.2f, %.2f, %.2f) Yaw=%.1f deg | Arraste: %s",
+                ImGui::Text("HMD(%.2f, %.2f, %.2f) Yaw=%.1f | Drag:%s",
                     vrState.hmdSeatedPose.m[0][3],
                     vrState.hmdSeatedPose.m[1][3],
                     vrState.hmdSeatedPose.m[2][3],
                     il2vr::extractYawDeg(vrState.hmdSeatedPose),
-                    spaceDragActive ? "ATIVO" : (originGrabModeEnabled ? "Pronto" : "Off(VTOL)"));
+                    spaceDragActive ? "ON" : (originGrabModeEnabled ? "Ready" : "Off"));
             } else {
-                ImGui::Text("HMD: Aguardando tracking | Arraste: %s",
-                    spaceDragActive ? "ATIVO" : (originGrabModeEnabled ? "Pronto" : "Off(VTOL)"));
+                ImGui::Text("HMD: Waiting tracking | Drag: %s",
+                    spaceDragActive ? "ON" : (originGrabModeEnabled ? "Ready" : "Off"));
             }
-            ImGui::Text("Ctrl Esq: %s (0x%llX) | Ctrl Dir: %s (0x%llX)",
+            ImGui::Text("L: %s (0x%llX) | R: %s (0x%llX)",
                 vrState.left.valid ? "Ok" : "--",
                 static_cast<unsigned long long>(vrState.left.buttonPressedMask),
                 vrState.right.valid ? "Ok" : "--",
@@ -1627,7 +2085,8 @@ int main(int argc, char** argv) {
         }
 
         ImGui::Separator();
-        if (ImGui::Button("Recentralizar Origem na Cabeca (Botao Y)", ImVec2(-1.0f, 34.0f))) {
+        if (ImGui::Button(locale.tr("btn.recenter_head", "Recentralizar Origem na Cabeca (Botao Y)"), ImVec2(-1.0f, 32.0f))) {
+            hudCustomPlaced = false;
             if (vr.isInitialized() && vrState.hmdValid) {
                 if (!seat.hasOriginalBackup()) {
                     seat.captureOriginalBackup();
@@ -1644,11 +2103,12 @@ int main(int argc, char** argv) {
             }
         }
         const float btnW = (halfW - 28.0f) * 0.5f;
-        if (ImGui::Button("NumPad 5 -> Recenter IL-2", ImVec2(btnW, 30.0f))) {
+        if (ImGui::Button(locale.tr("btn.il2_recenter", "NumPad 5 -> Recenter IL-2"), ImVec2(btnW, 28.0f))) {
             sendIl2NativeRecenter();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Painel na Frente", ImVec2(btnW, 30.0f))) {
+        if (ImGui::Button(locale.tr("btn.hud_front", "Painel na Frente"), ImVec2(btnW, 28.0f))) {
+            hudCustomPlaced = false;
             if (vr.isInitialized() && vrState.hmdValid) {
                 vr.anchorHudToHead(
                     vrState.hmdSeatedPose,
@@ -1659,80 +2119,86 @@ int main(int argc, char** argv) {
                 lastHotkeyAction = "Painel HUD reposicionado na sua frente";
             }
         }
-        if (ImGui::Checkbox("Mostrar HUD VR (R3 / Ctrl+Alt+O)", &showVrHud)) {
+        if (ImGui::Checkbox(locale.tr("chk.show_hud", "Mostrar HUD VR (3x L3 / Ctrl+Alt+O)"), &showVrHud)) {
             vr.setOverlayVisible(showVrHud);
-            if (showVrHud && vrState.hmdValid) {
+            if (showVrHud && !hudCustomPlaced && vrState.hmdValid) {
                 pendingHudReanchor = true;
             }
         }
 
-        ImGui::Checkbox("Inverter Arraste 3D (Grip)", &invertSpaceDrag);
-        ImGui::SliderFloat("Vel. Arraste", &spaceDragScale, 0.5f, 2.0f, "%.2fx");
-        ImGui::SliderFloat("Inclinacao Laser", &rayPitchOffsetDeg, -45.0f, 0.0f, "%.0f deg");
+        ImGui::Checkbox(locale.tr("chk.invert_drag", "Inverter Arraste 3D (Grip)"), &invertSpaceDrag);
+        ImGui::SliderFloat(locale.tr("lbl.drag_speed", "Vel. Arraste"), &spaceDragScale, 0.5f, 2.0f, "%.2fx");
+        ImGui::SliderFloat(locale.tr("lbl.laser_pitch", "Inclinacao Laser"), &rayPitchOffsetDeg, -45.0f, 0.0f, "%.0f deg");
 
         ImGui::Separator();
         const auto& off = seat.offset();
         ImGui::Text("Offset: X=%.1fcm Y=%.1fcm Z=%.1fcm Yaw=%.1f",
             off.x * 100.0f, off.y * 100.0f, off.z * 100.0f, off.yawDeg);
-        ImGui::Checkbox("Passo Fino (2 mm / 0.5 deg)", &fineStep);
+        ImGui::Checkbox(locale.tr("chk.fine_step", "Passo Fino (2 mm / 0.5 deg)"), &fineStep);
 
-        if (ImGui::Button("Frente (-Z)", ImVec2(btnW, 28.0f))) { seat.nudgeStep(0, 0, -1, 0, fineStep); pendingHudReanchor = showVrHud; }
+        auto reanchorIfNotCustom = [&]() {
+            if (!hudCustomPlaced) {
+                pendingHudReanchor = showVrHud;
+            }
+        };
+        if (ImGui::Button(locale.tr("btn.fwd", "Frente (-Z)"), ImVec2(btnW, 26.0f))) { seat.nudgeStep(0, 0, -1, 0, fineStep); reanchorIfNotCustom(); }
         ImGui::SameLine();
-        if (ImGui::Button("Tras (+Z)", ImVec2(btnW, 28.0f))) { seat.nudgeStep(0, 0, 1, 0, fineStep); pendingHudReanchor = showVrHud; }
+        if (ImGui::Button(locale.tr("btn.back", "Tras (+Z)"), ImVec2(btnW, 26.0f))) { seat.nudgeStep(0, 0, 1, 0, fineStep); reanchorIfNotCustom(); }
 
-        if (ImGui::Button("Esquerda (-X)", ImVec2(btnW, 28.0f))) { seat.nudgeStep(-1, 0, 0, 0, fineStep); pendingHudReanchor = showVrHud; }
+        if (ImGui::Button(locale.tr("btn.left", "Esquerda (-X)"), ImVec2(btnW, 26.0f))) { seat.nudgeStep(-1, 0, 0, 0, fineStep); reanchorIfNotCustom(); }
         ImGui::SameLine();
-        if (ImGui::Button("Direita (+X)", ImVec2(btnW, 28.0f))) { seat.nudgeStep(1, 0, 0, 0, fineStep); pendingHudReanchor = showVrHud; }
+        if (ImGui::Button(locale.tr("btn.right", "Direita (+X)"), ImVec2(btnW, 26.0f))) { seat.nudgeStep(1, 0, 0, 0, fineStep); reanchorIfNotCustom(); }
 
-        if (ImGui::Button("Subir (+Y)", ImVec2(btnW, 28.0f))) { seat.nudgeStep(0, 1, 0, 0, fineStep); pendingHudReanchor = showVrHud; }
+        if (ImGui::Button(locale.tr("btn.up", "Subir (+Y)"), ImVec2(btnW, 26.0f))) { seat.nudgeStep(0, 1, 0, 0, fineStep); reanchorIfNotCustom(); }
         ImGui::SameLine();
-        if (ImGui::Button("Descer (-Y)", ImVec2(btnW, 28.0f))) { seat.nudgeStep(0, -1, 0, 0, fineStep); pendingHudReanchor = showVrHud; }
+        if (ImGui::Button(locale.tr("btn.down", "Descer (-Y)"), ImVec2(btnW, 26.0f))) { seat.nudgeStep(0, -1, 0, 0, fineStep); reanchorIfNotCustom(); }
 
-        if (ImGui::Button("Girar Esq (+Yaw)", ImVec2(btnW, 28.0f))) { seat.nudgeStep(0, 0, 0, 1, fineStep); pendingHudReanchor = showVrHud; }
+        if (ImGui::Button(locale.tr("btn.yaw_l", "Girar Esq (+Yaw)"), ImVec2(btnW, 26.0f))) { seat.nudgeStep(0, 0, 0, 1, fineStep); reanchorIfNotCustom(); }
         ImGui::SameLine();
-        if (ImGui::Button("Girar Dir (-Yaw)", ImVec2(btnW, 28.0f))) { seat.nudgeStep(0, 0, 0, -1, fineStep); pendingHudReanchor = showVrHud; }
+        if (ImGui::Button(locale.tr("btn.yaw_r", "Girar Dir (-Yaw)"), ImVec2(btnW, 26.0f))) { seat.nudgeStep(0, 0, 0, -1, fineStep); reanchorIfNotCustom(); }
 
-        if (ImGui::Button("Zerar Offsets", ImVec2(btnW, 30.0f))) {
+        if (ImGui::Button(locale.tr("btn.zero_offset", "Zerar Offsets"), ImVec2(btnW, 28.0f))) {
             seat.resetOffset();
-            pendingHudReanchor = showVrHud;
+            reanchorIfNotCustom();
             lastHotkeyAction = "Offsets zerados";
         }
         ImGui::SameLine();
-        if (ImGui::Button("Restaurar Original", ImVec2(btnW, 30.0f))) {
+        if (ImGui::Button(locale.tr("btn.restore_orig", "Restaurar Original"), ImVec2(btnW, 28.0f))) {
             seat.restoreOriginalPose();
-            pendingHudReanchor = showVrHud;
+            reanchorIfNotCustom();
             lastHotkeyAction = "Chaperone original restaurado";
         }
 
-        if (ImGui::Button("Teste Visivel (+25 cm Altura)", ImVec2(-1.0f, 28.0f))) {
+        if (ImGui::Button(locale.tr("btn.vis_test", "Teste Visivel (+25 cm Altura)"), ImVec2(-1.0f, 26.0f))) {
             toggleVisibleTestOffset();
-            pendingHudReanchor = showVrHud;
+            reanchorIfNotCustom();
         }
 
-        ImGui::Text("Ultima acao: %s", lastHotkeyAction.c_str());
+        ImGui::Text("Status: %s", lastHotkeyAction.c_str());
         ImGui::End();
 
         const float rightX = halfW + 16.0f;
-        const float topRightH = fullH * 0.72f;
+        const float topRightH = fullH * 0.64f;
         ImGui::SetNextWindowPos(ImVec2(rightX, 8.0f), ImGuiCond_Always);
         ImGui::SetNextWindowSize(ImVec2(halfW, topRightH), ImGuiCond_Always);
+        const std::string winP2Title = std::string(locale.tr("win.p2.title", "Pilar 2 - Pilotagem & vJoy")) + "###Pilar2";
         ImGui::Begin(
-            "Pilar 2 - Pilotagem VTOL VR (vJoy)",
+            winP2Title.c_str(),
             nullptr,
             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
-        ImGui::Text("vJoy Driver: %s | Device 1: %s | IL-2: joy%d",
-            vjoy.isDriverEnabled() ? "Sim" : "Nao",
-            vjoy.isAcquired() ? "Adquirido" : "Nao adquirido",
+        ImGui::Text("vJoy: %s | Dev 1: %s | IL-2: joy%d",
+            vjoy.isDriverEnabled() ? "On" : "Off",
+            vjoy.isAcquired() ? "OK" : "--",
             il2VJoyConfigId);
         ImGui::TextColored(
             vjoyAxesReady ? ImVec4(0.35f, 0.95f, 0.55f, 1.0f) : ImVec4(1.0f, 0.35f, 0.30f, 1.0f),
-            "Eixos vJoy: %s",
+            "Axes: %s",
             vjoyAxesDesc.c_str());
 
         if (!vjoyAxesReady) {
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.75f, 0.18f, 0.14f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.90f, 0.25f, 0.20f, 1.0f));
-            if (ImGui::Button("ATIVAR EIXOS Y/Z/Rz NO VJOY (Admin)", ImVec2(-1.0f, 32.0f))) {
+            if (ImGui::Button(locale.tr("btn.fix_vjoy_axes", "ATIVAR EIXOS Y/Z/Rz NO VJOY (Admin)"), ImVec2(-1.0f, 30.0f))) {
                 const bool ok = vjoy.configureAllAxesWithAdmin(1);
                 vjoyAxesReady = vjoy.hasRequiredFlightAxes(1);
                 vjoyAxesDesc = vjoy.describeEnabledAxes(1);
@@ -1745,21 +2211,21 @@ int main(int argc, char** argv) {
         }
 
         if (!vjoy.isAcquired()) {
-            if (ImGui::Button("Adquirir vJoy Device 1", ImVec2(-1.0f, 32.0f))) {
+            if (ImGui::Button(locale.tr("btn.acquire_vjoy", "Adquirir vJoy Device 1"), ImVec2(-1.0f, 30.0f))) {
                 if (vjoy.acquire(1)) {
                     mirrorVrControllers = true;
                 }
             }
         } else {
-            if (ImGui::Button("Liberar vJoy")) {
+            if (ImGui::Button(locale.tr("btn.release_vjoy", "Liberar vJoy"))) {
                 vjoy.reset();
                 vjoy.relinquish();
                 mirrorVrControllers = false;
             }
             ImGui::SameLine();
-            ImGui::Checkbox("Enviar para vJoy", &mirrorVrControllers);
+            ImGui::Checkbox(locale.tr("chk.send_vjoy", "Enviar para vJoy"), &mirrorVrControllers);
             ImGui::SameLine();
-            if (ImGui::Button("Sincronizar IL-2")) {
+            if (ImGui::Button(locale.tr("btn.sync_il2", "Sincronizar IL-2"))) {
                 if (!il2InputDir.empty()) {
                     il2VJoyConfigId = detectIl2VJoyConfigId(il2InputDir);
                     syncIl2InputProfilesForVJoy(il2InputDir, il2VJoyConfigId, il2SyncStatus);
@@ -1769,100 +2235,235 @@ int main(int argc, char** argv) {
             }
         }
 
-        ImGui::Text("Manche (Dir Grip): %s | Manete (Esq Grip): %s",
-            vtolStickGrabbed ? "AGARRADO" : "SOLTO",
-            vtolThrottleGrabbed ? "AGARRADA" : "TRAVADA");
+        ImGui::Separator();
+        ImGui::TextUnformatted(locale.tr("lbl.ctrl_mode", "Modo dos Controles:"));
+        ImGui::SameLine();
+        int modeInt = static_cast<int>(controlStickMode);
+        if (ImGui::RadioButton(locale.tr("mode.ctrl.free", "Modo Livre"), &modeInt, 0)) {
+            controlStickMode = il2vr::ControlStickMode::Free;
+            anchorEditMode = false;
+            saveCurrentSettings();
+        }
+        ImGui::SameLine();
+        if (ImGui::RadioButton(locale.tr("mode.ctrl.anchored", "Modo Ancorado"), &modeInt, 1)) {
+            controlStickMode = il2vr::ControlStickMode::Anchored;
+            if (!anchorsCalibrated && vrState.hmdValid) {
+                initDefaultAnchorsNearHmd(vrState.hmdSeatedPose);
+                anchorsCalibrated = true;
+                saveControlAnchors(anchorsPath, controlAnchors, anchorsCalibrated);
+            }
+            saveCurrentSettings();
+        }
 
-        if (ImGui::SliderFloat("Curso Manche (cm)", &vtolStickRangeCm, 5.0f, 25.0f, "%.0f cm")) {
+        if (controlStickMode == il2vr::ControlStickMode::Anchored) {
+            if (!anchorEditMode) {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.42f, 0.72f, 1.0f));
+                if (ImGui::Button(locale.tr("btn.anchor_edit_enter", "Posicionar Controles"), ImVec2(-1.0f, 28.0f))) {
+                    originGrabModeEnabled = false;
+                    anchorEditMode = true;
+                    if (!anchorsCalibrated && vrState.hmdValid) {
+                        initDefaultAnchorsNearHmd(vrState.hmdSeatedPose);
+                        anchorsCalibrated = true;
+                    }
+                    lastHotkeyAction = "Submodo: Posicionar Controles";
+                }
+                ImGui::PopStyleColor();
+            } else {
+                ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.16f, 0.62f, 0.28f, 1.0f));
+                if (ImGui::Button(locale.tr("btn.anchor_edit_save", "Salvar Ancoras & Voltar ao Voo"), ImVec2(-1.0f, 28.0f))) {
+                    anchorEditMode = false;
+                    anchorStickGrabbed = false;
+                    anchorThrottleGrabbed = false;
+                    saveControlAnchors(anchorsPath, controlAnchors, anchorsCalibrated);
+                    lastHotkeyAction = "Ancoras salvas!";
+                }
+                ImGui::PopStyleColor();
+                ImGui::TextColored(
+                    ImVec4(1.0f, 0.85f, 0.25f, 1.0f),
+                    "%s",
+                    locale.tr("lbl.anchor_edit_hint", "Controles em neutro! Segure GRIP Dir/Esq para mover Manche/Manete."));
+            }
+        }
+
+        ImGui::Text("Stick: %s | Throttle: %s",
+            (vtolStickGrabbed || anchorStickGrabbed) ? "HOLD" : "Free",
+            (vtolThrottleGrabbed || anchorThrottleGrabbed) ? "HOLD" : "Latched");
+
+        if (ImGui::SliderFloat(locale.tr("lbl.stick_range", "Curso Manche (cm)"), &vtolStickRangeCm, 5.0f, 25.0f, "%.0f cm")) {
             vtolStickCfg.rangeM = vtolStickRangeCm * 0.01f;
         }
-        if (ImGui::SliderFloat("Curso Manete (cm)", &vtolThrottleRangeCm, 8.0f, 30.0f, "%.0f cm")) {
+        if (ImGui::SliderFloat(locale.tr("lbl.throttle_range", "Curso Manete (cm)"), &vtolThrottleRangeCm, 8.0f, 30.0f, "%.0f cm")) {
             vtolThrottleCfg.rangeM = vtolThrottleRangeCm * 0.01f;
         }
-        ImGui::Checkbox("Leme por Torcao do Pulso Dir (Rz)", &vtolStickCfg.useWristTwistRudder);
+        ImGui::Checkbox(locale.tr("chk.wrist_rudder", "Leme por Torcao do Pulso Dir (Rz)"), &vtolStickCfg.useWristTwistRudder);
 
         ImGui::Separator();
         char axisOverlay[64]{};
         std::snprintf(axisOverlay, sizeof(axisOverlay), "Roll (X): %+.2f", testStickX);
-        ImGui::ProgressBar((testStickX + 1.0f) * 0.5f, ImVec2(-1.0f, 20.0f), axisOverlay);
+        ImGui::ProgressBar((testStickX + 1.0f) * 0.5f, ImVec2(-1.0f, 18.0f), axisOverlay);
 
         std::snprintf(axisOverlay, sizeof(axisOverlay), "Pitch (Y): %+.2f", testStickY);
-        ImGui::ProgressBar((testStickY + 1.0f) * 0.5f, ImVec2(-1.0f, 20.0f), axisOverlay);
+        ImGui::ProgressBar((testStickY + 1.0f) * 0.5f, ImVec2(-1.0f, 18.0f), axisOverlay);
 
-        std::snprintf(axisOverlay, sizeof(axisOverlay), "Leme (Rz): %+.2f", testRudder);
-        ImGui::ProgressBar((testRudder + 1.0f) * 0.5f, ImVec2(-1.0f, 20.0f), axisOverlay);
+        std::snprintf(axisOverlay, sizeof(axisOverlay), "Rudder (Rz): %+.2f", testRudder);
+        ImGui::ProgressBar((testRudder + 1.0f) * 0.5f, ImVec2(-1.0f, 18.0f), axisOverlay);
 
-        if (ImGui::SliderFloat("Acelerador (Z)", &testThrottle, 0.0f, 1.0f, "%.2f")) {
+        if (ImGui::SliderFloat(locale.tr("lbl.throttle_slider", "Acelerador (Z)"), &testThrottle, 0.0f, 1.0f, "%.2f")) {
             if (vjoy.isAcquired() && mirrorVrControllers) {
                 vjoy.setThrottleNormalized(il2vr::VJoyAxis::Z, testThrottle);
             }
         }
-        std::snprintf(axisOverlay, sizeof(axisOverlay), "Potencia: %.0f%%", testThrottle * 100.0f);
-        ImGui::ProgressBar(testThrottle, ImVec2(-1.0f, 22.0f), axisOverlay);
+        std::snprintf(axisOverlay, sizeof(axisOverlay), "Throttle: %.0f%%", testThrottle * 100.0f);
+        ImGui::ProgressBar(testThrottle, ImVec2(-1.0f, 20.0f), axisOverlay);
 
         ImGui::Separator();
-        ImGui::Text("Auto-Bind IL-2 (varredura limpa sem tremor):");
+        ImGui::TextUnformatted(locale.tr("lbl.autobind", "Auto-Bind IL-2 (varredura limpa sem tremor):"));
         const float bindBtnW = (halfW - 40.0f) * 0.25f;
-        if (ImGui::Button("Bind Roll X", ImVec2(bindBtnW, 28.0f))) {
+        if (ImGui::Button(locale.tr("btn.bind_roll", "Bind Roll X"), ImVec2(bindBtnW, 26.0f))) {
             startAutoBind(AutoBindAxis::RollX, "Roll (X)");
         }
         ImGui::SameLine();
-        if (ImGui::Button("Bind Pitch Y", ImVec2(bindBtnW, 28.0f))) {
+        if (ImGui::Button(locale.tr("btn.bind_pitch", "Bind Pitch Y"), ImVec2(bindBtnW, 26.0f))) {
             startAutoBind(AutoBindAxis::PitchY, "Pitch (Y)");
         }
         ImGui::SameLine();
-        if (ImGui::Button("Bind Manete Z", ImVec2(bindBtnW, 28.0f))) {
+        if (ImGui::Button(locale.tr("btn.bind_throttle", "Bind Manete Z"), ImVec2(bindBtnW, 26.0f))) {
             startAutoBind(AutoBindAxis::ThrottleZ, "Acelerador (Z)");
         }
         ImGui::SameLine();
-        if (ImGui::Button("Bind Leme Rz", ImVec2(bindBtnW, 28.0f))) {
+        if (ImGui::Button(locale.tr("btn.bind_rudder", "Bind Leme Rz"), ImVec2(bindBtnW, 26.0f))) {
             startAutoBind(AutoBindAxis::RudderRz, "Leme (Rz)");
         }
         if (autoBindAxis != AutoBindAxis::None) {
             const char* phaseLabel = (autoBindElapsedSec < 1.4f)
-                ? "Centro (aguarde...)"
+                ? "Center..."
                 : (autoBindElapsedSec < 2.2f)
-                    ? "Varrendo +100% (Max)"
+                    ? "+100% (Max)"
                     : (autoBindElapsedSec < 3.2f)
-                        ? "Varrendo -100% (Min)"
-                        : "Voltando ao Centro...";
+                        ? "-100% (Min)"
+                        : "Center...";
             ImGui::ProgressBar(
                 std::clamp(autoBindElapsedSec / kAutoBindDurationSec, 0.0f, 1.0f),
-                ImVec2(-1.0f, 20.0f),
+                ImVec2(-1.0f, 18.0f),
                 phaseLabel);
         }
         ImGui::End();
 
         ImGui::SetNextWindowPos(ImVec2(rightX, topRightH + 16.0f), ImGuiCond_Always);
         ImGui::SetNextWindowSize(ImVec2(halfW, fullH - topRightH - 8.0f), ImGuiCond_Always);
+        const std::string winP3Title = std::string(locale.tr("win.p3.title", "Debug, Gizmo 3D & Idiomas")) + "###Pilar3";
         ImGui::Begin(
-            "Guia Quest 3 & Telemetria UDP",
+            winP3Title.c_str(),
             nullptr,
             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
-        ImGui::TextWrapped(
-            "Quest 3:\n"
-            "  R3 (Clique Analogico Dir): Abrir/Fechar este HUD\n"
-            "  L3 (Clique Analogico Esq): Alternar Modo VTOL VR <-> Ajustar Origem\n"
-            "  Segurar GRIP Dir/Esq (VTOL VR): Manche 6DoF / Manete Travada\n"
-            "  Segurar GRIP (Modo Origem): Arrastar cockpit 3D (sem girar)\n"
-            "  Botao Y (Esq): Centralizar Origem na cabeca | Botao B: Livre IL-2\n"
-            "  Laser + Gatilho (ou A/X): Clicar/arrastar botoes e sliders");
-        ImGui::Separator();
-        ImGui::InputInt("Porta UDP", &telemetryPort);
-        if (!telemetry.isRunning()) {
-            if (ImGui::Button("Iniciar Listener UDP")) {
-                telemetry.start("127.0.0.1", static_cast<uint16_t>(telemetryPort));
+        if (ImGui::BeginTabBar("BottomTabs")) {
+            const std::string tabGuideTitle = std::string(locale.tr("tab.guide", "Guia & UDP")) + "###TabGuide";
+            if (ImGui::BeginTabItem(tabGuideTitle.c_str())) {
+                ImGui::TextWrapped("%s", locale.tr(
+                    "guide.text",
+                    "Quest 3:\n"
+                    "  3x L3 (Esq): Abrir/Fechar HUD\n"
+                    "  3x R3 (Dir): Alternar Voo <-> Origem 3D\n"
+                    "  GRIP Dir/Esq: Manche / Manete"));
+                ImGui::Separator();
+                ImGui::InputInt("UDP Port", &telemetryPort);
+                if (!telemetry.isRunning()) {
+                    if (ImGui::Button(locale.tr("btn.start_udp", "Iniciar Listener UDP"))) {
+                        telemetry.start("127.0.0.1", static_cast<uint16_t>(telemetryPort));
+                    }
+                } else {
+                    if (ImGui::Button(locale.tr("btn.stop_udp", "Parar Listener UDP"))) {
+                        telemetry.stop();
+                    }
+                }
+                ImGui::SameLine();
+                ImGui::Text("Pkts: %llu | FPS: %.1f",
+                    static_cast<unsigned long long>(telemetry.packetCount()),
+                    ImGui::GetIO().Framerate);
+                ImGui::EndTabItem();
             }
-        } else {
-            if (ImGui::Button("Parar Listener UDP")) {
-                telemetry.stop();
+
+            const std::string tabGizmoTitle = std::string(locale.tr("tab.gizmo_mouse", "Gizmo 3D & Mouse")) + "###TabGizmo";
+            if (ImGui::BeginTabItem(tabGizmoTitle.c_str())) {
+                if (ImGui::Checkbox(locale.tr("chk.hand_gizmo", "Mostrar Flechas & Gizmo de Rotacao das Maos (3D)"), &showHandGizmo)) {
+                    saveCurrentSettings();
+                }
+                if (ImGui::Checkbox(locale.tr("chk.anchor_markers", "Mostrar Marcadores Ancorados no Cockpit"), &showAnchorMarkers)) {
+                    saveCurrentSettings();
+                }
+                ImGui::TextUnformatted(locale.tr("lbl.angles_title", "Angulos das Maos (Pitch / Roll / Yaw):"));
+                if (vrState.left.valid) {
+                    const il2vr::EulerAnglesDeg angL = il2vr::extractEulerAnglesDeg(vrState.left.pose);
+                    ImGui::Text("  L: P=%+5.1f  R=%+5.1f  Y=%+5.1f deg", angL.pitchDeg, angL.rollDeg, angL.yawDeg);
+                } else {
+                    ImGui::TextUnformatted("  L: --");
+                }
+                if (vrState.right.valid) {
+                    const il2vr::EulerAnglesDeg angR = il2vr::extractEulerAnglesDeg(vrState.right.pose);
+                    ImGui::Text("  R: P=%+5.1f  R=%+5.1f  Y=%+5.1f deg", angR.pitchDeg, angR.rollDeg, angR.yawDeg);
+                } else {
+                    ImGui::TextUnformatted("  R: --");
+                }
+                ImGui::Separator();
+                if (ImGui::Checkbox(locale.tr("chk.mouse_vr", "Mouse VR nos Menus do IL-2 (Raycaster)"), &vrMouseMode)) {
+                    saveCurrentSettings();
+                }
+                ImGui::TextWrapped("%s", locale.tr("lbl.mouse_hint", "Aponte para a tela do IL-2: Gatilho=Clique Esq | A=Clique Dir | Analogico Y=Scroll"));
+                ImGui::EndTabItem();
             }
+
+            const std::string tabLangTitle = std::string(locale.tr("tab.languages", "Idiomas")) + "###TabLang";
+            if (ImGui::BeginTabItem(tabLangTitle.c_str())) {
+                ImGui::TextUnformatted(locale.tr("lbl.lang_select", "Selecione o Idioma do HUD:"));
+                ImGui::Text("%s %s (%s)",
+                    locale.tr("lbl.lang_active", "Idioma ativo:"),
+                    locale.activeLocaleName().c_str(),
+                    locale.activeLocaleCode().c_str());
+                ImGui::Separator();
+                for (const auto& info : locale.availableLocales()) {
+                    const bool isActive = (info.code == locale.activeLocaleCode());
+                    const std::string btnLabel = info.name + " [" + info.code + "]" + (isActive ? " *" : "") + "##lang_" + info.code;
+                    if (isActive) {
+                        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.16f, 0.56f, 0.34f, 1.0f));
+                    }
+                    if (ImGui::Button(btnLabel.c_str(), ImVec2(-1.0f, 28.0f))) {
+                        if (locale.loadLocale(info.code)) {
+                            saveCurrentSettings();
+                            lastHotkeyAction = "Idioma: " + info.code;
+                        }
+                    }
+                    if (isActive) {
+                        ImGui::PopStyleColor();
+                    }
+                }
+                ImGui::TextWrapped("%s", locale.tr("lbl.lang_hint", "Adicione arquivos .json em config/locales/ para criar novas traducoes."));
+                ImGui::EndTabItem();
+            }
+            ImGui::EndTabBar();
         }
-        ImGui::SameLine();
-        ImGui::Text("Pacotes: %llu | FPS: %.1f",
-            static_cast<unsigned long long>(telemetry.packetCount()),
-            ImGui::GetIO().Framerate);
         ImGui::End();
+
+        // Bottom Quest 3-style HUD Grab Bar (hold Trigger or Grip on this bar to move panel in 3D space).
+        ImGui::SetNextWindowPos(ImVec2(8.0f, fullH + 12.0f), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(
+            ImVec2(canvas.x - 16.0f, std::max(32.0f, canvas.y - fullH - 18.0f)),
+            ImGuiCond_Always);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(4.0f, 3.0f));
+        ImGui::Begin(
+            "##HudGrabBar",
+            nullptr,
+            ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize
+                | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        ImGui::PushStyleColor(
+            ImGuiCol_Button,
+            hudGrabActive ? ImVec4(0.88f, 0.56f, 0.10f, 1.0f) : ImVec4(0.20f, 0.36f, 0.55f, 1.0f));
+        ImGui::PushStyleColor(
+            ImGuiCol_ButtonHovered,
+            ImVec4(0.28f, 0.50f, 0.78f, 1.0f));
+        ImGui::Button(locale.tr("bar.grab_hud", "=== SEGURE AQUI (Gatilho/Grip + Analogico Dist.) PARA MOVER PAINEL ==="), ImVec2(-1.0f, -1.0f));
+        ImGui::PopStyleColor(2);
+        ImGui::End();
+        ImGui::PopStyleVar();
 
         if (vrHudHit.has_value()) {
             const ImVec2 cursorPos(vrHudHit->u * canvas.x, vrHudHit->v * canvas.y);
@@ -1910,7 +2511,11 @@ int main(int argc, char** argv) {
                     << "OverlayMode: " << (vr.isOverlayMode() ? "Sim" : "Nao")
                     << " | HUDVisible: " << (showVrHud ? "Sim" : "Nao") << "\n"
                     << "IL2_PID: " << il2Pid << "\n"
-                    << "Modo: " << (originGrabModeEnabled ? "AJUSTAR_ORIGEM" : "PILOTAGEM_VTOL_VR") << "\n"
+                    << "Modo: " << (originGrabModeEnabled ? "AJUSTAR_ORIGEM" : (anchorEditMode ? "POSICIONAR_CONTROLES" : "PILOTAGEM_VTOL_VR"))
+                    << " | CtrlMode: " << (controlStickMode == il2vr::ControlStickMode::Anchored ? "Ancorado" : "Livre")
+                    << " | HandGizmo: " << (showHandGizmo ? "On" : "Off")
+                    << " | VRMouse: " << (vrMouseMode ? "On" : "Off")
+                    << " | Locale: " << locale.activeLocaleCode() << "\n"
                     << "HMD: valid=" << (vrState.hmdValid ? 1 : 0)
                     << " pos=(" << vrState.hmdSeatedPose.m[0][3] << ", "
                     << vrState.hmdSeatedPose.m[1][3] << ", "
@@ -1939,6 +2544,12 @@ int main(int argc, char** argv) {
         }
     }
 
+    if (prevVrMouseLeft) {
+        il2vr::KeyboardInjector::sendMouseButton(true, false);
+    }
+    if (prevVrMouseRight) {
+        il2vr::KeyboardInjector::sendMouseButton(false, false);
+    }
     unregisterGlobalHotkeys(hwnd, registeredHotkeyIds);
     telemetry.stop();
     vjoy.relinquish();

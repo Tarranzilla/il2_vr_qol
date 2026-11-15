@@ -1,59 +1,73 @@
-# IL-2 VR QoL
+# IL-2 VR QoL Companion (`v0.7.0`)
 
-Companion app de **Quality of Life e Interação em VR** para *IL-2 Sturmovik: Battle of Stalingrad* (série *Great Battles*), focado em Meta Quest 3.
+**VR Quality of Life & Virtual Flight Controls Companion** for *IL-2 Sturmovik: Great Battles* (Meta Quest 3 / SteamVR).
+
+Companion app de **Qualidade de Vida, Controles Virtuais 6DoF e Mouse VR** para *IL-2 Sturmovik: Great Battles* no Meta Quest 3 / SteamVR.
 
 > [!IMPORTANT]
-> Este projeto **não modifica arquivos do jogo**. Ele roda como um aplicativo externo (overlay VR + dispositivos virtuais de entrada), o que o mantém compatível com atualizações e com servidores multiplayer (que verificam a integridade dos arquivos).
+> **Zero game file modification / Zero alteração em arquivos do jogo:** Runs completely externally via SteamVR Overlays (`OpenVR`) + `vJoy` virtual joystick + Windows `SendInput` (`en-US` & `pt-BR` multi-language UI).
 
-## Os 3 pilares
+---
 
-| # | Pilar | Resumo | Spec |
-|---|-------|--------|------|
-| 1 | **Posicionamento do Headset** | Ajustar posição/altura/orientação do "assento" VR com ajustes rápidos e finos via UI e atalhos de teclado. Perfis por aeronave. | [spec](docs/specs/pilar-1-posicionamento-headset.md) |
-| 2 | **Manche e Manete Virtuais** | Controlar manche e acelerador com os controles do Quest 3 (joystick virtual via vJoy), com feedback háptico vindo da telemetria do jogo e camadas de debug ligáveis. | [spec](docs/specs/pilar-2-controles-vr.md) |
-| 3 | **Interação com o Cockpit** | Apontar para painéis/alavancas com um *raycaster* e acioná-los. Hotspots calibrados por aeronave, mapeados para teclas/eixos do IL-2. | [spec](docs/specs/pilar-3-interacao-cockpit.md) |
+## Implemented Features / Recursos Implementados (`v0.1.0` → `v0.7.0`)
 
-## Documentação
+- **3D Seat / VR Origin Positioning (`v0.1.0` + `v0.2.0`):**
+  - Triple-click **`3x R3`** (Right Stick Click): Toggle between **Flight Mode** and **Origin 3D Drag Mode** (grab anywhere with Grip to translate the cockpit origin with zero rotation).
+  - Left **`Y`** Button: Instant head-pose recenter (`TrackingUniverseStanding` chaperone-safe).
+  - Fine & coarse nudge buttons + Global Windows Hotkeys + `NumPad 5` IL-2 native recenter helper.
+- **Quest 3-Style Draggable VR HUD (`v0.2.0`):**
+  - Triple-click **`3x L3`** (Left Stick Click) or `Ctrl+Alt+O`: Open/Close the VR HUD overlay.
+  - Grab the **bottom handle bar** with Trigger or Grip + Raycaster (and thumbstick Y for distance) to move and anchor the HUD anywhere in 3D cockpit space.
+- **Two Virtual Flight Control Modes (`v0.3.0`):**
+  - **Free Mode (`Modo Livre`):** Hold Right/Left Grip anywhere in mid-air for 6DoF VTOL-VR-style virtual stick (with wrist-twist rudder & One-Euro jitter filtering) and latched throttle lever.
+  - **Anchored Mode (`Modo Ancorado`):** Fixed 3D cockpit stick & throttle anchors persisted in `config/controls.anchors.json`, with haptic proximity cues and a **`Position Controls` (`Posicionar Controles`)** calibration submode (neutralizes flight axes while dragging/rotating anchors to match the cockpit).
+  - Automatic `vJoy` recovery, 8-axis admin configurator, IL-2 `devices.txt` profile sync (`joyN`), and jitter-free **Auto-Bind** calibration sweeps.
+- **Toggleable 3D Hand Arrows & Euler Rotation Gizmo (`v0.4.0`):**
+  - Real-time 3D OpenVR directional overlays (`Forward -Z`, `Right +X`) on both controllers and anchored cockpit controls, plus live Pitch / Roll / Yaw angle readouts in degrees.
+- **VR Raycaster Mouse in IL-2 Menus (`v0.5.0`):**
+  - Point your Quest 3 controller ray at the IL-2 screen to move the Windows cursor, Left Click (`Trigger`), Right Click (`A/X`), and Scroll (`Thumbstick Y`), with automatic vJoy weapon lock while Mouse Mode is active.
+- **Modular i18n Translation System (`v0.6.0` & `v0.7.0`):**
+  - Community-extensible JSON locale files in [`config/locales/`](config/locales/) (`pt-BR` and `en-US` included out of the box) with live in-VR switching in the **Languages / Idiomas** tab.
+
+---
+
+## Controls Summary / Resumo dos Atalhos VR (Quest 3)
+
+| Action / Ação | Input |
+|---|---|
+| Open / Close VR HUD (`Abrir/Fechar HUD VR`) | **`3x L3`** (Left stick triple-click) or `Ctrl+Alt+O` |
+| Flight Mode ↔ Edit VR Origin (`Modo Voo <-> Origem 3D`) | **`3x R3`** (Right stick triple-click) |
+| Reposition HUD Window (`Mover Painel HUD`) | Hold **Trigger** or **Grip** on the bottom HUD Grab Bar (+ **Stick Y** for depth) |
+| Grab Virtual Stick / Throttle (`Manche / Manete`) | Hold **Right Grip** / **Left Grip** |
+| Recenter Origin at Head (`Recentralizar na Cabeça`) | **`Y`** Button (Left controller) |
+| VR Menu Mouse (`Mouse VR nos Menus`) | **Laser** + **Trigger** (L-Click) / **`A`** (R-Click) / **Stick Y** (Scroll) |
+
+---
+
+## Build & Test (`Windows MSVC + vcpkg + CMake`)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\tools\build_and_test.ps1
+```
+
+- Run unit tests: `ctest --test-dir build/windows-msvc-debug --output-on-failure`
+- Run companion app: `.\build\windows-msvc-debug\il2vr_companion.exe`
+
+## Requisitos / Requirements
+
+- Windows 10/11, *IL-2 Sturmovik: Great Battles* running in **SteamVR / OpenVR** mode
+- Meta Quest 3 (Quest Link / Air Link / Virtual Desktop / Steam Link)
+- [vJoy](https://github.com/BrunnerInnovation/vJoy) virtual joystick driver (Device 1 with X, Y, Z, Rz axes)
+- Visual Studio 2022+ (MSVC, C++20), CMake, vcpkg (`nlohmann-json`, `spdlog`, `glm`, `imgui`, `catch2`)
+
+## Documentação / Docs
 
 | Documento | Conteúdo |
-|-----------|----------|
-| [01 – Visão e Escopo](docs/01-visao-e-escopo.md) | Objetivos, não-objetivos, público, premissas |
-| [02 – Arquitetura](docs/02-arquitetura.md) | Módulos, fluxo de dados, stack, IPC |
-| [03 – Roadmap](docs/03-roadmap.md) | Fases, marcos e backlog com checkboxes |
-| [04 – Riscos e Spikes](docs/04-riscos-e-spikes.md) | Incertezas técnicas e experimentos para validá-las |
-| [ADRs](docs/adr/) | Registro das decisões de arquitetura |
-| [Exemplos de config](config/examples/) | Formatos de perfil, atalhos, mapeamento e hotspots |
-
-## Estrutura do repositório
-
-```
-il2_vr_qol/
-├── README.md
-├── .editorconfig
-├── .gitignore
-├── CMakePresets.json
-├── vcpkg.json
-├── docs/
-│   ├── 01-visao-e-escopo.md
-│   ├── 02-arquitetura.md
-│   ├── 03-roadmap.md
-│   ├── 04-riscos-e-spikes.md
-│   ├── adr/                  # Architecture Decision Records
-│   └── specs/                # Especificação de cada pilar
-├── config/
-│   └── examples/             # JSONs de referência (perfis, atalhos, hotspots)
-├── src/                      # Código (criado na Fase 0) – ver src/README.md
-├── spikes/                   # Protótipos descartáveis da Fase 0
-└── tools/                    # Scripts utilitários (captura de telemetria etc.)
-```
-
-## Requisitos (previstos)
-
-- Windows 10/11, IL-2 Sturmovik: Battle of Stalingrad rodando em modo **SteamVR** (ver [ADR-0002](docs/adr/0002-backend-vr-openvr-primeiro.md))
-- Meta Quest 3 via Quest Link / Air Link / Virtual Desktop / Steam Link
-- [vJoy](https://github.com/BrunnerInnovation/vJoy) (driver de joystick virtual)
-- Visual Studio 2022+ com C++20, CMake, vcpkg
-
-## Status
-
-🟡 **Fase 0 – Fundação & Spikes** (ver [roadmap](docs/03-roadmap.md)).
+|---|---|
+| [01 – Visão e Escopo](docs/01-visao-e-escopo.md) | Objetivos, não-objetivos, premissas |
+| [02 – Arquitetura](docs/02-arquitetura.md) | Módulos, fluxo de dados, stack |
+| [03 – Roadmap](docs/03-roadmap.md) | Fases e marcos |
+| [04 – Riscos e Spikes](docs/04-riscos-e-spikes.md) | Validação técnica e riscos |
+| [ADRs](docs/adr/) | Architecture Decision Records |
+| [Specs](docs/specs/) | Especificação dos 3 pilares |
+| [Locales](config/locales/) | JSON translations (`pt-BR.json`, `en-US.json`) |
