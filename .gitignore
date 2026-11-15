@@ -1,0 +1,25 @@
+# Build
+/build/
+/out/
+/vcpkg_installed/
+CMakeUserPresets.json
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.vcxproj.filters
+
+# Binários
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.obj
+*.lib
+
+# Logs e capturas locais
+*.log
+/tools/captures/
+il2vr_status.txt
+imgui.ini

@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "backend": "openvr",
+  "activeAircraftProfile": "lagg3s29",
+  "telemetry": {
+    "motion": { "enabled": true, "bind": "127.0.0.1", "port": 4321 },
+    "telemetry": { "enabled": true, "bind": "127.0.0.1", "port": 4322 }
+  },
+  "hotkeys": {
+    "seat.recenter": "Ctrl+Alt+Numpad5",
+    "seat.forward": "Ctrl+Alt+Numpad8",
+    "seat.back": "Ctrl+Alt+Numpad2",
+    "seat.left": "Ctrl+Alt+Numpad4",
+    "seat.right": "Ctrl+Alt+Numpad6",
+    "seat.up": "Ctrl+Alt+Numpad9",
+    "seat.down": "Ctrl+Alt+Numpad3",
+    "seat.yawLeft": "Ctrl+Alt+Numpad7",
+    "seat.yawRight": "Ctrl+Alt+Numpad1",
+    "seat.save": "Ctrl+Alt+Numpad0",
+    "seat.resetOffset": "Ctrl+Alt+NumpadDecimal",
+    "seat.fineModifier": "Shift",
+    "ui.toggleVrPanel": "Ctrl+Alt+NumpadAdd",
+    "layers.manager": "Ctrl+Alt+F1",
+    "layers.axes": "Ctrl+Alt+F2",
+    "layers.input": "Ctrl+Alt+F3",
+    "layers.gizmos": "Ctrl+Alt+F4",
+    "layers.hotspots": "Ctrl+Alt+F5",
+    "layers.telemetry": "Ctrl+Alt+F6",
+    "layers.perf": "Ctrl+Alt+F7",
+    "cockpit.toggleEditor": "Ctrl+Alt+F10"
+  },
+  "layers": {
+    "axes": { "enabled": true, "anchor": "leftWrist", "target": ["vr", "desktop"] },
+    "input": { "enabled": false, "anchor": "none", "target": ["desktop"] },
+    "gizmos": { "enabled": false, "anchor": "seat", "target": ["vr"] },
+    "grab": { "enabled": false, "anchor": "hand", "target": ["vr"] },
+    "haptics": { "enabled": false, "anchor": "none", "target": ["desktop"] },
+    "telemetry": { "enabled": false, "anchor": "none", "target": ["desktop"] },
+    "perf": { "enabled": false, "anchor": "none", "target": ["desktop"] },
+    "events": { "enabled": false, "anchor": "none", "target": ["desktop"] },
+    "hotspots": { "enabled": false, "anchor": "seat", "target": ["vr"] }
+  }
+}

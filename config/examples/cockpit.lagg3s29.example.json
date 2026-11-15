@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "aircraft": "lagg3s29",
+  "displayName": "LaGG-3 ser. 29",
+  "notes": "Posicoes ILUSTRATIVAS no espaco do assento. Devem ser calibradas in-VR com o editor de hotspots.",
+  "interaction": { "defaultMode": "laser", "touchRadiusM": 0.03, "maxRayM": 1.5 },
+  "hotspots": [
+    {
+      "id": "gear_toggle",
+      "label": "Trem de pouso",
+      "shape": { "type": "box", "size": [0.04, 0.04, 0.04] },
+      "pose": { "position": [0.28, -0.34, -0.40], "yawPitchRollDeg": [0, -15, 0] },
+      "action": { "type": "tap", "keys": ["G"] },
+      "haptics": { "onHover": "tick", "onActivate": "click" }
+    },
+    {
+      "id": "flaps",
+      "label": "Flaps",
+      "shape": { "type": "box", "size": [0.04, 0.04, 0.05] },
+      "pose": { "position": [-0.30, -0.38, -0.34], "yawPitchRollDeg": [0, 0, 0] },
+      "action": { "type": "rotary", "increase": ["F"], "decrease": ["LShift", "F"], "stepDeg": 15 },
+      "haptics": { "onHover": "tick", "onActivate": "click" }
+    },
+    {
+      "id": "prop_rpm",
+      "label": "Passo da helice (RPM)",
+      "shape": { "type": "box", "size": [0.03, 0.03, 0.12] },
+      "pose": { "position": [-0.26, -0.32, -0.32], "yawPitchRollDeg": [0, 0, 0] },
+      "action": { "type": "lever", "vjoyAxis": "Rx", "axisDirection": [0, 0, -1], "travelM": 0.12 },
+      "haptics": { "onHover": "tick", "onActivate": "click" }
+    },
+    {
+      "id": "mixture",
+      "label": "Mistura do combustivel",
+      "shape": { "type": "box", "size": [0.03, 0.03, 0.12] },
+      "pose": { "position": [-0.23, -0.33, -0.32], "yawPitchRollDeg": [0, 0, 0] },
+      "action": { "type": "lever", "vjoyAxis": "Ry", "axisDirection": [0, 0, -1], "travelM": 0.12 },
+      "haptics": { "onHover": "tick", "onActivate": "click" }
+    },
+    {
+      "id": "water_radiator",
+      "label": "Radiador de agua",
+      "shape": { "type": "box", "size": [0.04, 0.04, 0.10] },
+      "pose": { "position": [0.25, -0.38, -0.36], "yawPitchRollDeg": [0, 0, 0] },
+      "action": { "type": "lever", "vjoyAxis": "Sl0", "axisDirection": [0, 0, -1], "travelM": 0.10 },
+      "haptics": { "onHover": "tick", "onActivate": "click" }
+    },
+    {
+      "id": "oil_radiator",
+      "label": "Radiador de oleo",
+      "shape": { "type": "box", "size": [0.04, 0.04, 0.10] },
+      "pose": { "position": [0.29, -0.38, -0.36], "yawPitchRollDeg": [0, 0, 0] },
+      "action": { "type": "lever", "vjoyAxis": "Sl1", "axisDirection": [0, 0, -1], "travelM": 0.10 },
+      "haptics": { "onHover": "tick", "onActivate": "click" }
+    },
+    {
+      "id": "supercharger",
+      "label": "Compressor (Estagio 1/2)",
+      "shape": { "type": "box", "size": [0.035, 0.035, 0.05] },
+      "pose": { "position": [-0.28, -0.40, -0.40], "yawPitchRollDeg": [0, -10, 0] },
+      "action": { "type": "tap", "keys": ["LShift", "S"] },
+      "haptics": { "onHover": "tick", "onActivate": "click" }
+    },
+    {
+      "id": "engine_start",
+      "label": "Partida do motor",
+      "shape": { "type": "sphere", "radius": 0.02 },
+      "pose": { "position": [-0.14, -0.28, -0.54], "yawPitchRollDeg": [0, 0, 0] },
+      "action": { "type": "hold", "keys": ["E"] },
+      "haptics": { "onHover": "tick", "onActivate": "rumbleWhileHeld" }
+    },
+    {
+      "id": "canopy_toggle",
+      "label": "Capota (abrir/fechar)",
+      "shape": { "type": "box", "size": [0.05, 0.04, 0.05] },
+      "pose": { "position": [0.22, -0.10, -0.30], "yawPitchRollDeg": [0, 0, 0] },
+      "action": { "type": "tap", "keys": ["RAlt", "C"] },
+      "haptics": { "onHover": "tick", "onActivate": "click" }
+    },
+    {
+      "id": "nav_lights",
+      "label": "Luzes de navegacao",
+      "shape": { "type": "rect", "size": [0.025, 0.025] },
+      "pose": { "position": [0.18, -0.22, -0.55], "yawPitchRollDeg": [0, -10, 0] },
+      "action": { "type": "toggle", "on": ["RCtrl", "L"], "off": ["RCtrl", "L"], "initialState": "off" },
+      "haptics": { "onHover": "tick", "onActivate": "click" }
+    }
+  ]
+}

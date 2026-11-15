@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "profile": "default",
+  "universe": "seated",
+  "recenterBase": {
+    "position": [0.0, 0.0, 0.0],
+    "yawDeg": 0.0
+  },
+  "offset": {
+    "x": 0.0,
+    "y": 0.031,
+    "z": 0.012,
+    "yawDeg": -1.5
+  },
+  "steps": {
+    "coarse": { "translationM": 0.02, "yawDeg": 5.0 },
+    "fine": { "translationM": 0.002, "yawDeg": 0.5 }
+  },
+  "recenterCountdownS": 3
+}
