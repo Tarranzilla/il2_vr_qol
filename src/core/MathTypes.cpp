@@ -346,4 +346,54 @@ std::optional<HudQuadHit> intersectRayHudQuad(
     return HudQuadHit{u, v, t, hitPoint};
 }
 
+TripleClickDetector::TripleClickDetector(float maxIntervalSec) noexcept
+    : maxIntervalSec_(std::max(maxIntervalSec, 0.05f)) {}
+
+bool TripleClickDetector::update(bool pressed, float dtSeconds) noexcept {
+    if (count_ > 0) {
+        elapsedSinceLastClick_ += std::max(dtSeconds, 0.0f);
+        if (elapsedSinceLastClick_ > maxIntervalSec_) {
+            count_ = 0;
+            elapsedSinceLastClick_ = 0.0f;
+        }
+    }
+
+    bool triggered = false;
+    if (pressed && !prevPressed_) {
+        ++count_;
+        elapsedSinceLastClick_ = 0.0f;
+        if (count_ >= 3) {
+            triggered = true;
+            count_ = 0;
+        }
+    }
+
+    prevPressed_ = pressed;
+    return triggered;
+}
+
+void TripleClickDetector::reset() noexcept {
+    count_ = 0;
+    elapsedSinceLastClick_ = 0.0f;
+    prevPressed_ = false;
+}
+
+EulerAnglesDeg extractEulerAnglesDeg(const Mat34& m) noexcept {
+    EulerAnglesDeg out{};
+    out.pitchDeg = std::asin(std::clamp(-m.m[1][2], -1.0f, 1.0f)) * kRadToDeg;
+    out.yawDeg = extractYawDeg(m);
+    if (std::fabs(m.m[1][0]) > 1e-5f || std::fabs(m.m[1][1]) > 1e-5f) {
+        out.rollDeg = std::atan2(-m.m[1][0], m.m[1][1]) * kRadToDeg;
+    }
+    return out;
+}
+
+float computeAnchoredThrottleInput(
+    const Vec3& anchorPos,
+    const Vec3& currentPos,
+    float referenceYawDeg,
+    const VtolThrottleConfig& cfg) noexcept {
+    return computeVtolThrottleInput(0.50f, anchorPos, currentPos, referenceYawDeg, cfg);
+}
+
 } // namespace il2vr

@@ -123,6 +123,46 @@ private:
     float dxPrev_ = 0.0f;
 };
 
+// Detects 3 consecutive button presses where each gap is <= maxIntervalSec.
+class TripleClickDetector {
+public:
+    explicit TripleClickDetector(float maxIntervalSec = 0.45f) noexcept;
+
+    bool update(bool pressed, float dtSeconds) noexcept;
+    int clickCount() const noexcept { return count_; }
+    void reset() noexcept;
+
+private:
+    float maxIntervalSec_ = 0.45f;
+    float elapsedSinceLastClick_ = 0.0f;
+    int count_ = 0;
+    bool prevPressed_ = false;
+};
+
+struct EulerAnglesDeg {
+    float pitchDeg = 0.0f;
+    float yawDeg = 0.0f;
+    float rollDeg = 0.0f;
+};
+
+EulerAnglesDeg extractEulerAnglesDeg(const Mat34& m) noexcept;
+
+enum class ControlStickMode : int {
+    Free = 0,
+    Anchored = 1
+};
+
+struct ControlAnchors {
+    Mat34 stickPose = makeHorizontalPose({0.18f, -0.32f, -0.28f}, 0.0f);
+    Mat34 throttlePose = makeHorizontalPose({-0.24f, -0.30f, -0.25f}, 0.0f);
+};
+
+float computeAnchoredThrottleInput(
+    const Vec3& anchorPos,
+    const Vec3& currentPos,
+    float referenceYawDeg,
+    const VtolThrottleConfig& cfg) noexcept;
+
 std::optional<float> intersectRayBox(const Ray& ray, const Vec3& center, const Vec3& halfExtents);
 std::optional<float> intersectRaySphere(const Ray& ray, const Vec3& center, float radius);
 std::optional<HudQuadHit> intersectRayHudQuad(
