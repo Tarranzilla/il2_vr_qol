@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -158,6 +159,39 @@ bool KeyboardInjector::sendKeyTap(const std::vector<std::string>& combo, int hol
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(std::max(holdMs, 1)));
     return sendKeyComboState(combo, false);
+}
+
+bool KeyboardInjector::sendMouseMoveNormalized(float normX0To1, float normY0To1) {
+    const float cx = std::clamp(normX0To1, 0.0f, 1.0f);
+    const float cy = std::clamp(normY0To1, 0.0f, 1.0f);
+    INPUT in{};
+    in.type = INPUT_MOUSE;
+    in.mi.dx = static_cast<LONG>(std::lround(cx * 65535.0f));
+    in.mi.dy = static_cast<LONG>(std::lround(cy * 65535.0f));
+    in.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
+    return SendInput(1, &in, sizeof(INPUT)) == 1;
+}
+
+bool KeyboardInjector::sendMouseButton(bool leftButton, bool pressed) {
+    INPUT in{};
+    in.type = INPUT_MOUSE;
+    if (leftButton) {
+        in.mi.dwFlags = pressed ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP;
+    } else {
+        in.mi.dwFlags = pressed ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_RIGHTUP;
+    }
+    return SendInput(1, &in, sizeof(INPUT)) == 1;
+}
+
+bool KeyboardInjector::sendMouseWheel(int wheelDelta) {
+    if (wheelDelta == 0) {
+        return true;
+    }
+    INPUT in{};
+    in.type = INPUT_MOUSE;
+    in.mi.dwFlags = MOUSEEVENTF_WHEEL;
+    in.mi.mouseData = static_cast<DWORD>(wheelDelta);
+    return SendInput(1, &in, sizeof(INPUT)) == 1;
 }
 
 } // namespace il2vr
