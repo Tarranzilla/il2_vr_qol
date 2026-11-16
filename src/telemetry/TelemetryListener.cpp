@@ -66,6 +66,7 @@ bool TelemetryListener::start(const std::string& bindIp, uint16_t port) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         lastPacket_.clear();
+        pendingPackets_.clear();
     }
 
     running_.store(true);
@@ -90,6 +91,17 @@ std::vector<uint8_t> TelemetryListener::lastPacket() const {
     return lastPacket_;
 }
 
+std::vector<std::vector<uint8_t>> TelemetryListener::drainPackets() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    std::vector<std::vector<uint8_t>> out;
+    out.reserve(pendingPackets_.size());
+    while (!pendingPackets_.empty()) {
+        out.push_back(std::move(pendingPackets_.front()));
+        pendingPackets_.pop_front();
+    }
+    return out;
+}
+
 void TelemetryListener::listenLoop() {
     std::array<uint8_t, 2048> buffer{};
     const SOCKET sock = static_cast<SOCKET>(socketHandle_);
@@ -109,6 +121,10 @@ void TelemetryListener::listenLoop() {
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 lastPacket_.assign(buffer.begin(), buffer.begin() + n);
+                if (pendingPackets_.size() >= 256) {
+                    pendingPackets_.pop_front();
+                }
+                pendingPackets_.push_back(lastPacket_);
             }
             packetCount_.fetch_add(1);
         }

@@ -23,6 +23,8 @@ add_library(il2vr_core STATIC
     src/output/VJoyClient.cpp
     src/output/KeyboardInjector.cpp
     src/telemetry/TelemetryListener.cpp
+    src/telemetry/Il2TelemetryParser.cpp
+    src/haptics/HapticsMixer.cpp
 )
 
 target_include_directories(il2vr_core

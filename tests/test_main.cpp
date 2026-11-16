@@ -437,3 +437,152 @@ TEST_CASE("Curved virtual mouse screen intersection and upright alignment", "[ma
     CHECK(bar.pose.m[1][3] < flatPose.m[1][3] - 0.45f);
     CHECK(bar.curvature == Approx(curvature * (bar.widthM / 1.60f)).margin(1e-4f));
 }
+
+#include "haptics/HapticsMixer.h"
+#include "telemetry/Il2TelemetryParser.h"
+
+namespace {
+
+void pushU16(std::vector<uint8_t>& buf, uint16_t v) {
+    const uint8_t* p = reinterpret_cast<const uint8_t*>(&v);
+    buf.insert(buf.end(), p, p + sizeof(v));
+}
+
+void pushU32(std::vector<uint8_t>& buf, uint32_t v) {
+    const uint8_t* p = reinterpret_cast<const uint8_t*>(&v);
+    buf.insert(buf.end(), p, p + sizeof(v));
+}
+
+void pushF32(std::vector<uint8_t>& buf, float v) {
+    const uint8_t* p = reinterpret_cast<const uint8_t*>(&v);
+    buf.insert(buf.end(), p, p + sizeof(v));
+}
+
+} // namespace
+
+TEST_CASE("Il2TelemetryParser decodes Motion, StateAndEvents, and guards truncated input", "[telemetry]") {
+    il2vr::Il2TelemetrySnapshot snap{};
+
+    // Truncated / unknown packets fail safely without crashing.
+    CHECK_FALSE(il2vr::Il2TelemetryParser::feedPacket({}, snap));
+    CHECK_FALSE(il2vr::Il2TelemetryParser::feedPacket({1, 2, 3, 4, 5, 6, 7, 8}, snap));
+
+    // Motion packet (44 bytes): packetId=0x494C0100, tick=120, 9 floats.
+    std::vector<uint8_t> motionPkt;
+    pushU32(motionPkt, il2vr::Il2TelemetryParser::kMotionPacketId);
+    pushU32(motionPkt, 120);
+    for (int i = 0; i < 6; ++i) {
+        pushF32(motionPkt, 0.0f);
+    }
+    pushF32(motionPkt, 1.5f);
+    pushF32(motionPkt, 2.5f);
+    pushF32(motionPkt, 9.8f);
+    REQUIRE(motionPkt.size() == 44);
+    REQUIRE(il2vr::Il2TelemetryParser::feedPacket(motionPkt, snap));
+    CHECK(snap.hasMotion);
+    CHECK(snap.lastMotionTick == 120u);
+    CHECK(snap.motionAcc[2] == Approx(9.8f).margin(1e-4f));
+
+    // StateAndEvents packet: 3 states (RPM, IAS, StallBuffet) + 2 events (VehicleName, GunFired).
+    std::vector<uint8_t> statePkt;
+    pushU32(statePkt, il2vr::Il2TelemetryParser::kStateAndEventsPacketId);
+    pushU16(statePkt, 64); // not paused
+    pushU32(statePkt, 200);
+    statePkt.push_back(3); // stateCount
+
+    // State 0: RPM (1 engine = 2400.0)
+    pushU16(statePkt, 0);
+    statePkt.push_back(1);
+    pushF32(statePkt, 2400.0f);
+
+    // State 6: IAS (95.0 m/s)
+    pushU16(statePkt, 6);
+    statePkt.push_back(1);
+    pushF32(statePkt, 95.0f);
+
+    // State 9: StallBuffet (freq=18.0, amp=0.65)
+    pushU16(statePkt, 9);
+    statePkt.push_back(2);
+    pushF32(statePkt, 18.0f);
+    pushF32(statePkt, 0.65f);
+
+    // Event count = 2
+    statePkt.push_back(2);
+    // Event 0: VehicleName = "Bf109"
+    pushU16(statePkt, 0);
+    statePkt.push_back(5);
+    statePkt.insert(statePkt.end(), {'B', 'f', '1', '0', '9'});
+    // Event 9: GunFired (gunIndex=1)
+    pushU16(statePkt, 9);
+    statePkt.push_back(1);
+    statePkt.push_back(1);
+
+    REQUIRE(il2vr::Il2TelemetryParser::feedPacket(statePkt, snap));
+    CHECK(snap.hasState);
+    CHECK_FALSE(snap.paused);
+    CHECK(snap.maxRpm() == Approx(2400.0f).margin(1e-2f));
+    CHECK(snap.indicatedAirspeedMps == Approx(95.0f).margin(1e-2f));
+    CHECK(snap.stallBuffetAmp == Approx(0.65f).margin(1e-3f));
+    CHECK(snap.aircraftName == "Bf109");
+    CHECK(snap.pendingGunShots == 1u);
+    CHECK(snap.lastGunIndex == 1);
+}
+
+TEST_CASE("startup.cfg telemetry block updater is idempotent and preserves existing settings", "[telemetry]") {
+    const std::string original = "[KEY = graphics]\r\n\tfullscreen = 1\r\n[END]\r\n";
+    bool changed = false;
+    const std::string updated = il2vr::updateStartupCfgTelemetryText(original, 29373, changed);
+    CHECK(changed);
+    CHECK(updated.find("[KEY = motiondevice]") != std::string::npos);
+    CHECK(updated.find("[KEY = telemetrydevice]") != std::string::npos);
+    CHECK(updated.find("port = 29373") != std::string::npos);
+    CHECK(updated.find("fullscreen = 1") != std::string::npos);
+
+    bool secondChanged = true;
+    const std::string again = il2vr::updateStartupCfgTelemetryText(updated, 29373, secondChanged);
+    CHECK_FALSE(secondChanged);
+    CHECK(again == updated);
+}
+
+TEST_CASE("HapticsMixer routes independent channels and respects master and UI priority", "[haptics]") {
+    il2vr::HapticsMixer mixer;
+    il2vr::Il2TelemetrySnapshot snap{};
+    snap.hasState = true;
+    snap.engineCount = 1;
+    snap.rpm[0] = 2400.0f;
+    snap.pendingGunShots = 1;
+
+    // Default gunsHand=0 (Right): gun fire vibrates right hand only.
+    auto out = mixer.update(snap, 0.8f, 0.011f);
+    CHECK(out.gunsLevel > 0.5f);
+    CHECK(out.rightDurationUs > 0);
+    CHECK(out.leftDurationUs == 0);
+
+    // Turning guns off while keeping buffet on isolates channels independently.
+    snap.clearPendingEvents();
+    auto cfg = mixer.config();
+    cfg.gunsEnabled = false;
+    cfg.buffetEnabled = true;
+    mixer.setConfig(cfg);
+    snap.stallBuffetAmp = 0.80f;
+    for (int i = 0; i < 6; ++i) {
+        out = mixer.update(snap, 0.8f, 0.016f);
+    }
+    CHECK(out.gunsLevel == 0.0f);
+    CHECK(out.buffetLevel > 0.4f);
+    CHECK(out.leftDurationUs > 0);
+    CHECK(out.rightDurationUs > 0);
+
+    // UI priority pulse suppresses telemetry pulses on that hand.
+    mixer.notifyInteractionPulse(true, 0.05f);
+    out = mixer.update(snap, 0.8f, 0.011f);
+    CHECK(out.leftDurationUs == 0);
+    CHECK(out.rightDurationUs > 0);
+
+    // Master off silences both hands.
+    cfg.masterEnabled = false;
+    mixer.setConfig(cfg);
+    out = mixer.update(snap, 0.8f, 0.011f);
+    CHECK(out.leftDurationUs == 0);
+    CHECK(out.rightDurationUs == 0);
+}

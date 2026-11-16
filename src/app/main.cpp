@@ -1,8 +1,10 @@
 #include "core/LocaleManager.h"
 #include "core/MathTypes.h"
+#include "haptics/HapticsMixer.h"
 #include "output/KeyboardInjector.h"
 #include "output/VJoyClient.h"
 #include "seat/SeatManager.h"
+#include "telemetry/Il2TelemetryParser.h"
 #include "telemetry/TelemetryListener.h"
 #include "vr/OpenVrBackend.h"
 
@@ -60,6 +62,7 @@ struct AppSettings {
     float vrMouseScreenManualYawDeg = 0.0f;
     float vrMouseScreenPitchDeg = 0.0f;
     bool vrMouseFreeGripDrag = false;
+    il2vr::HapticsConfig haptics{};
 };
 
 std::filesystem::path resolveConfigDir(const std::filesystem::path& localesDir) {
@@ -124,6 +127,18 @@ AppSettings loadAppSettings(const std::filesystem::path& path) {
             s.vrMouseScreenManualYawDeg = std::clamp(j.value("vrMouseScreenManualYawDeg", s.vrMouseScreenManualYawDeg), -180.0f, 180.0f);
             s.vrMouseScreenPitchDeg = std::clamp(j.value("vrMouseScreenPitchDeg", s.vrMouseScreenPitchDeg), -30.0f, 30.0f);
             s.vrMouseFreeGripDrag = j.value("vrMouseFreeGripDrag", s.vrMouseFreeGripDrag);
+            s.haptics.masterEnabled = j.value("hapticsMasterEnabled", s.haptics.masterEnabled);
+            s.haptics.masterGain = std::clamp(j.value("hapticsMasterGain", s.haptics.masterGain), 0.10f, 2.0f);
+            s.haptics.buffetEnabled = j.value("hapticsBuffetEnabled", s.haptics.buffetEnabled);
+            s.haptics.buffetGain = std::clamp(j.value("hapticsBuffetGain", s.haptics.buffetGain), 0.0f, 2.0f);
+            s.haptics.gunsEnabled = j.value("hapticsGunsEnabled", s.haptics.gunsEnabled);
+            s.haptics.gunsGain = std::clamp(j.value("hapticsGunsGain", s.haptics.gunsGain), 0.0f, 2.0f);
+            s.haptics.gunsHand = std::clamp(j.value("hapticsGunsHand", s.haptics.gunsHand), 0, 2);
+            s.haptics.engineEnabled = j.value("hapticsEngineEnabled", s.haptics.engineEnabled);
+            s.haptics.engineGain = std::clamp(j.value("hapticsEngineGain", s.haptics.engineGain), 0.0f, 2.0f);
+            s.haptics.engineHand = std::clamp(j.value("hapticsEngineHand", s.haptics.engineHand), 0, 2);
+            s.haptics.impactEnabled = j.value("hapticsImpactEnabled", s.haptics.impactEnabled);
+            s.haptics.impactGain = std::clamp(j.value("hapticsImpactGain", s.haptics.impactGain), 0.0f, 2.0f);
         }
     } catch (...) {
     }
@@ -155,7 +170,19 @@ bool saveAppSettings(const std::filesystem::path& path, const AppSettings& s) {
         {"vrMouseScreenYawMode", s.vrMouseScreenYawMode},
         {"vrMouseScreenManualYawDeg", s.vrMouseScreenManualYawDeg},
         {"vrMouseScreenPitchDeg", s.vrMouseScreenPitchDeg},
-        {"vrMouseFreeGripDrag", s.vrMouseFreeGripDrag}
+        {"vrMouseFreeGripDrag", s.vrMouseFreeGripDrag},
+        {"hapticsMasterEnabled", s.haptics.masterEnabled},
+        {"hapticsMasterGain", s.haptics.masterGain},
+        {"hapticsBuffetEnabled", s.haptics.buffetEnabled},
+        {"hapticsBuffetGain", s.haptics.buffetGain},
+        {"hapticsGunsEnabled", s.haptics.gunsEnabled},
+        {"hapticsGunsGain", s.haptics.gunsGain},
+        {"hapticsGunsHand", s.haptics.gunsHand},
+        {"hapticsEngineEnabled", s.haptics.engineEnabled},
+        {"hapticsEngineGain", s.haptics.engineGain},
+        {"hapticsEngineHand", s.haptics.engineHand},
+        {"hapticsImpactEnabled", s.haptics.impactEnabled},
+        {"hapticsImpactGain", s.haptics.impactGain}
     };
     out << j.dump(2) << '\n';
     return out.good();
@@ -1034,7 +1061,9 @@ int main(int argc, char** argv) {
     }
 
     il2vr::TelemetryListener telemetry;
-    int telemetryPort = 4321;
+    int telemetryPort = 29373;
+    il2vr::Il2TelemetrySnapshot il2Telemetry{};
+    il2vr::HapticsMixer hapticsMixer;
 
     il2vr::LocaleManager locale;
     const std::filesystem::path localesDir = il2vr::LocaleManager::findLocalesDirectory();
@@ -1042,6 +1071,7 @@ int main(int argc, char** argv) {
     const std::filesystem::path settingsPath = configDir / "settings.json";
     const std::filesystem::path anchorsPath = configDir / "controls.anchors.json";
     AppSettings appSettings = loadAppSettings(settingsPath);
+    hapticsMixer.setConfig(appSettings.haptics);
     if (!localesDir.empty()) {
         locale.discoverLocales(localesDir);
         locale.loadLocale(appSettings.locale);
@@ -1051,11 +1081,26 @@ int main(int argc, char** argv) {
     const std::filesystem::path il2InputDir = detectIl2InputDir();
     int il2VJoyConfigId = detectIl2VJoyConfigId(il2InputDir);
     std::string il2SyncStatus;
+    std::string il2TelemetryCfgStatus;
+    bool telemetryRestartNeeded = false;
     if (!il2InputDir.empty()) {
         syncIl2InputProfilesForVJoy(il2InputDir, il2VJoyConfigId, il2SyncStatus);
+        const std::filesystem::path startupCfgPath = il2InputDir.parent_path() / "startup.cfg";
+        bool modified = false;
+        if (il2vr::configureIl2StartupCfgTelemetry(
+                startupCfgPath.string(),
+                static_cast<uint16_t>(telemetryPort),
+                modified,
+                il2TelemetryCfgStatus)) {
+            if (modified && findProcessIdByName(L"Il-2.exe") != 0) {
+                telemetryRestartNeeded = true;
+            }
+        }
     } else {
         il2SyncStatus = "Pasta data/input do IL-2 nao detectada";
+        il2TelemetryCfgStatus = il2SyncStatus;
     }
+    telemetry.start("127.0.0.1", static_cast<uint16_t>(telemetryPort));
     bool vjoyAxesReady = vjoy.hasRequiredFlightAxes(1);
     std::string vjoyAxesDesc = vjoy.describeEnabledAxes(1);
 
@@ -1194,7 +1239,13 @@ int main(int argc, char** argv) {
         appSettings.vrMouseScreenManualYawDeg = vrMouseScreenManualYawDeg;
         appSettings.vrMouseScreenPitchDeg = vrMouseScreenPitchDeg;
         appSettings.vrMouseFreeGripDrag = vrMouseFreeGripDrag;
+        appSettings.haptics = hapticsMixer.config();
         saveAppSettings(settingsPath, appSettings);
+    };
+
+    auto triggerUiHaptic = [&](il2vr::VrHand hand, uint16_t durationUs) {
+        hapticsMixer.notifyInteractionPulse(hand == il2vr::VrHand::Left, 0.065f);
+        vr.triggerHapticPulse(hand, durationUs);
     };
 
     auto applyMouseScreenAlignment = [&](const il2vr::Vec3& center, const il2vr::Mat34* optHmdPose) {
@@ -1742,10 +1793,10 @@ int main(int argc, char** argv) {
                     const bool nearThrottle = vrState.left.valid
                         && vecDistance(posOf(vrState.left.pose), posOf(controlAnchors.throttlePose)) <= 0.14f;
                     if (nearStick && !prevNearStickAnchor) {
-                        vr.triggerHapticPulse(il2vr::VrHand::Right, 900);
+                        triggerUiHaptic(il2vr::VrHand::Right, 900);
                     }
                     if (nearThrottle && !prevNearThrottleAnchor) {
-                        vr.triggerHapticPulse(il2vr::VrHand::Left, 900);
+                        triggerUiHaptic(il2vr::VrHand::Left, 900);
                     }
                     prevNearStickAnchor = nearStick;
                     prevNearThrottleAnchor = nearThrottle;
@@ -1772,6 +1823,7 @@ int main(int argc, char** argv) {
                         rudderFilterRz.reset();
                         stickHighDeflectionHapticLatched = false;
                         vr.triggerHapticPulse(il2vr::VrHand::Right, 1600);
+                        hapticsMixer.notifyInteractionPulse(false, 0.065f);
                     }
                     const il2vr::VtolStickOutput stickOut = il2vr::computeVtolStickInput(
                         stickGrabStartPose,
@@ -1854,7 +1906,7 @@ int main(int argc, char** argv) {
                         newDetent = 2;
                     }
                     if (newDetent != -1 && newDetent != lastThrottleDetent) {
-                        vr.triggerHapticPulse(il2vr::VrHand::Left, (newDetent == 1) ? 1400 : 2000);
+                        triggerUiHaptic(il2vr::VrHand::Left, (newDetent == 1) ? 1400 : 2000);
                     }
                     lastThrottleDetent = newDetent;
                 } else {
@@ -2380,6 +2432,20 @@ int main(int argc, char** argv) {
             vrHudWasHit = false;
             prevRayClickDown = false;
         }
+
+        for (const auto& pkt : telemetry.drainPackets()) {
+            il2vr::Il2TelemetryParser::feedPacket(pkt, il2Telemetry);
+        }
+        if (vr.isInitialized() && vrState.runtimeRunning) {
+            const il2vr::HapticsFrameOutput hapticsOut = hapticsMixer.update(il2Telemetry, testThrottle, dtSeconds);
+            if (hapticsOut.leftDurationUs > 0) {
+                vr.triggerHapticPulse(il2vr::VrHand::Left, hapticsOut.leftDurationUs);
+            }
+            if (hapticsOut.rightDurationUs > 0) {
+                vr.triggerHapticPulse(il2vr::VrHand::Right, hapticsOut.rightDurationUs);
+            }
+        }
+        il2Telemetry.clearPendingEvents();
 
         ImGui::NewFrame();
 
@@ -2957,6 +3023,106 @@ int main(int argc, char** argv) {
                 ImGui::TextWrapped("%s", locale.tr("lbl.lang_hint", "Adicione arquivos .json em config/locales/ para criar novas traducoes."));
                 ImGui::EndTabItem();
             }
+
+            const std::string tabHapticsTitle = std::string(locale.tr("tab.haptics", "Haptica")) + "###TabHaptics";
+            if (ImGui::BeginTabItem(tabHapticsTitle.c_str())) {
+                il2vr::HapticsConfig hCfg = hapticsMixer.config();
+                bool hChanged = false;
+                hChanged |= ImGui::Checkbox(locale.tr("chk.haptics_master", "Ligar Haptica da Telemetria (Master)"), &hCfg.masterEnabled);
+                if (ImGui::SliderFloat(locale.tr("lbl.haptics_master_gain", "Forca Geral"), &hCfg.masterGain, 0.10f, 2.0f, "%.2fx")) {
+                    hChanged = true;
+                }
+                ImGui::Separator();
+
+                ImGui::BeginDisabled(!hCfg.masterEnabled);
+                hChanged |= ImGui::Checkbox(locale.tr("chk.haptics_buffet", "Tremor / Buffet (Asa / G / Solo)"), &hCfg.buffetEnabled);
+                if (ImGui::SliderFloat("##BuffetGain", &hCfg.buffetGain, 0.0f, 2.0f, "%.2fx")) {
+                    hChanged = true;
+                }
+
+                hChanged |= ImGui::Checkbox(locale.tr("chk.haptics_guns", "Vibrar nos Tiros"), &hCfg.gunsEnabled);
+                ImGui::SameLine();
+                ImGui::TextUnformatted(locale.tr("lbl.haptics_hand", "Mao"));
+                ImGui::SameLine();
+                hChanged |= ImGui::RadioButton((std::string(locale.tr("opt.hand_right", "Dir")) + "##gh0").c_str(), &hCfg.gunsHand, 0);
+                ImGui::SameLine();
+                hChanged |= ImGui::RadioButton((std::string(locale.tr("opt.hand_left", "Esq")) + "##gh1").c_str(), &hCfg.gunsHand, 1);
+                ImGui::SameLine();
+                hChanged |= ImGui::RadioButton((std::string(locale.tr("opt.hand_both", "Ambas")) + "##gh2").c_str(), &hCfg.gunsHand, 2);
+                if (ImGui::SliderFloat("##GunsGain", &hCfg.gunsGain, 0.0f, 2.0f, "%.2fx")) {
+                    hChanged = true;
+                }
+
+                hChanged |= ImGui::Checkbox(locale.tr("chk.haptics_engine", "Pulso Ritmico do Motor (RPM)"), &hCfg.engineEnabled);
+                ImGui::SameLine();
+                ImGui::TextUnformatted(locale.tr("lbl.haptics_hand", "Mao"));
+                ImGui::SameLine();
+                hChanged |= ImGui::RadioButton((std::string(locale.tr("opt.hand_right", "Dir")) + "##eh0").c_str(), &hCfg.engineHand, 0);
+                ImGui::SameLine();
+                hChanged |= ImGui::RadioButton((std::string(locale.tr("opt.hand_left", "Esq")) + "##eh1").c_str(), &hCfg.engineHand, 1);
+                ImGui::SameLine();
+                hChanged |= ImGui::RadioButton((std::string(locale.tr("opt.hand_both", "Ambas")) + "##eh2").c_str(), &hCfg.engineHand, 2);
+                if (ImGui::SliderFloat("##EngineGain", &hCfg.engineGain, 0.0f, 2.0f, "%.2fx")) {
+                    hChanged = true;
+                }
+
+                hChanged |= ImGui::Checkbox(locale.tr("chk.haptics_impact", "Impactos / Dano"), &hCfg.impactEnabled);
+                if (ImGui::SliderFloat("##ImpactGain", &hCfg.impactGain, 0.0f, 2.0f, "%.2fx")) {
+                    hChanged = true;
+                }
+                ImGui::EndDisabled();
+
+                if (hChanged) {
+                    hapticsMixer.setConfig(hCfg);
+                    saveCurrentSettings();
+                }
+
+                ImGui::Separator();
+                if (ImGui::Button(locale.tr("btn.test_shot", "Testar Tiro"))) {
+                    il2Telemetry.pendingGunShots += 1;
+                }
+                ImGui::SameLine();
+                if (ImGui::Button(locale.tr("btn.test_buffet", "Testar Tremor"))) {
+                    il2Telemetry.stallBuffetAmp = 0.85f;
+                    il2Telemetry.hasState = true;
+                }
+                ImGui::SameLine();
+                if (ImGui::Button(locale.tr("btn.test_impact", "Testar Impacto"))) {
+                    il2Telemetry.pendingHits += 1;
+                    il2Telemetry.pendingPeakImpact = 0.90f;
+                }
+                ImGui::SameLine();
+                if (ImGui::Button(locale.tr("btn.cfg_telemetry", "Ativar Telemetria (startup.cfg)"))) {
+                    if (!il2InputDir.empty()) {
+                        bool mod = false;
+                        const std::filesystem::path startupCfgPath = il2InputDir.parent_path() / "startup.cfg";
+                        il2vr::configureIl2StartupCfgTelemetry(
+                            startupCfgPath.string(),
+                            static_cast<uint16_t>(telemetryPort),
+                            mod,
+                            il2TelemetryCfgStatus);
+                        if (mod && il2Pid != 0) {
+                            telemetryRestartNeeded = true;
+                        }
+                        lastHotkeyAction = il2TelemetryCfgStatus;
+                    }
+                }
+
+                if (telemetryRestartNeeded) {
+                    ImGui::TextColored(
+                        ImVec4(1.0f, 0.78f, 0.20f, 1.0f),
+                        "%s",
+                        locale.tr("warn.restart_il2_tel", "Reinicie o IL-2 uma vez para iniciar o streaming UDP!"));
+                }
+                ImGui::Text("Plane: %s | RPM: %.0f | IAS: %.0f km/h | Buffet: %.2f | Pkts(M:%llu S:%llu)",
+                    il2Telemetry.aircraftName.empty() ? "--" : il2Telemetry.aircraftName.c_str(),
+                    il2Telemetry.maxRpm(),
+                    il2Telemetry.indicatedAirspeedMps * 3.6f,
+                    il2Telemetry.stallBuffetAmp,
+                    static_cast<unsigned long long>(il2Telemetry.motionPacketCount),
+                    static_cast<unsigned long long>(il2Telemetry.statePacketCount));
+                ImGui::EndTabItem();
+            }
             ImGui::EndTabBar();
         }
         ImGui::End();
@@ -3058,6 +3224,11 @@ int main(int argc, char** argv) {
                     << " Rz=" << testRudder << "\n"
                     << "EixosVJoy: " << vjoyAxesDesc
                     << " | IL2_vJoy_ID: joy" << il2VJoyConfigId << "\n"
+                    << "Telemetry: pkts=" << telemetry.packetCount()
+                    << " motion=" << il2Telemetry.motionPacketCount
+                    << " state=" << il2Telemetry.statePacketCount
+                    << " rpm=" << il2Telemetry.maxRpm()
+                    << " haptics=" << (hapticsMixer.config().masterEnabled ? "On" : "Off") << "\n"
                     << "UltimaAcao: " << lastHotkeyAction << "\n";
             }
         }

@@ -1,6 +1,6 @@
-# IL-2 VR QoL Companion (`v0.8.0`)
+# IL-2 VR QoL Companion (`v0.8.2`)
 
-![Version](https://img.shields.io/badge/version-v0.8.0-0ea5e9)
+![Version](https://img.shields.io/badge/version-v0.8.2-0ea5e9)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3%20%2B%20Commercial-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/Windows-10%2F11%20x64-0078d4)
 ![VR](https://img.shields.io/badge/VR-Meta%20Quest%203%20%7C%20SteamVR%20OpenVR-6366f1)
@@ -192,11 +192,26 @@ Você pode escolher **2 modos de operação** no Pilar 2:
 - **Como interagir:**
   1. Aperte **`Botão X` (controle esquerdo)** *(ou o botão azul `ATIVAR MOUSE VR NOS MENUS DO JOGO` no Pilar 1)*. O HUD centralizado oculta-se automaticamente para não tampar os menus do IL-2.
   2. Se a moldura ciana não estiver exatamente sobre a tela de menu do jogo, **segure `Grip`** *(Esquerdo ou Direito)* para arrastá-la livremente até encaixar sobre o menu *(mantendo `yaw = 0°` reto)*. Use **`Analógico Y`** para aproximar/afastar (`0.35 m` a `2.20 m`) e **`Analógico X`** para ajustar a largura (`0.50 m` a `2.60 m`). Ao soltar, a posição fica salva em `config/settings.json`.
-  3. Aponte o laser (o cursor 3D acompanha sua mira) e use:
+  3. Aponte o laser (o cursor 3D acompanha sua mira mesmo na superfície curva) e use:
      - **`Gatilho` (Dir ou Esq):** Clique esquerdo.
      - **`Botão A` (Dir):** Clique direito.
      - **`Analógico Y`:** Scroll vertical.
-  4. Enquanto o Mouse VR estiver ativo, os botões de armamento no `vJoy` ficam bloqueados por segurança. Ao entrar na cabine, aperte **`X` (Esquerdo)** novamente para voltar aos botões de tiro/voo.
+  4. **Barra de Ícones (`Grab Bar` `v0.8.1`):** Abaixo da moldura da tela há uma barra simplificada apenas com ícones de **Mover** (cruz de 4 setas) e **Fechar (`✕`)**. Arraste pelo ícone de mover (+ **Analógico Y/X** para distância/largura). Na aba **Gizmo 3D & Mouse** você pode ativar **`Travar perpendicular ao chao`**, alternar modos de Yaw (`Fixo 0°` / `Virar para mim` / `Manual`), inclinação `Pitch`, ajustes finos `X/Y/Z ±1cm` e ajustar **`Curvatura` (`0.00 - 0.35`)**.
+  5. Enquanto o Mouse VR estiver ativo, os botões de armamento no `vJoy` ficam bloqueados por segurança. Ao entrar na cabine, aperte **`X` (Esquerdo)** ou clique no **`✕`** da barra para voltar ao voo.
+
+---
+
+#### Háptica por Telemetria do Jogo (`v0.8.2`)
+*Arquivos principais: [`Il2TelemetryParser.h`](src/telemetry/Il2TelemetryParser.h), [`HapticsMixer.h`](src/haptics/HapticsMixer.h), [`il2-telemetria.md`](docs/protocolos/il2-telemetria.md)*
+
+- **Como funciona:** O companion configura automaticamente (com backup prévio `startup.cfg.bak_il2vr`) as seções `[KEY = motiondevice]` e `[KEY = telemetrydevice]` em `data/startup.cfg` (porta UDP `29373`) para receber dados em tempo real diretamente do motor do IL-2 (`50 Hz`), mantendo a prioridade dos pulsos hápticos de interface (cliques, detentes e proximidade).
+- **Canais independentes (aba `Haptica`):**
+  - **`Master`:** Liga/desliga toda a vibração vinda da telemetria + ganho geral.
+  - **`Tremor / Buffet`:** Vibração proporcional a turbulência, estol (`StallBuffet`) e variações bruscas de aceleração/solo.
+  - **`Tiros / Armas`:** Pulso curto de recuo em cada evento `GunFired` / lançamento de bomba/foguete *(roteável para Direita/gatilho, Esquerda ou Ambas)*.
+  - **`Motor Ritmico (RPM)`:** Pulso cadenciado cuja frequência acompanha o RPM e cuja intensidade acompanha a pressão de admissão / potência *(padrão mão direita, ajustável)*.
+  - **`Impactos / Dano`:** Batida curta e forte em eventos `Hit` / `Damage`.
+- **Captura offline:** Use [`tools/capture_telemetry.ps1`](tools/capture_telemetry.ps1) para gravar datagramas UDP reais em `tools/captures/` para depuração.
 
 ---
 
@@ -227,14 +242,15 @@ Você pode escolher **2 modos de operação** no Pilar 2:
 | **Hold HUD Bottom Grab Bar** *(Trigger or Grip)* | Move HUD anywhere in 3D space (+ **Stick Y** depth `0.35 m - 1.60 m`) |
 | **Hold Right Grip** *(Flight)* | Operate 6DoF Virtual Stick (`Roll X`, `Pitch Y`, optional `Wrist-Twist Rudder Rz`) |
 | **Hold Left Grip** *(Flight)* | Move Virtual Throttle Lever (`Z` — latches with haptic detents at `0%, 50%, 100%`) |
-| **Hold Grip** *(VR Mouse Mode)* | Drag & align the 3D Virtual Mouse Screen onto IL-2's UI (+ **Stick Y** dist, **Stick X** size) |
+| **Hold Mouse Screen Grab Bar** *(Icon Move / ✕)* | Reposition curved/flat Mouse Screen (+ **Stick Y** dist, **Stick X** width) or Close VR Mouse |
 | **Trigger / Right `A` / Stick `Y`** *(VR Mouse Mode)* | Left Click / Right Click / Vertical Scroll *(vJoy fire buttons locked for safety)* |
 
 ### Module Architecture Overview
 - **VR Origin & Seat Positioning (`Pillar 1`):** Uses SteamVR's `TrackingUniverseStanding` exclusively so Meta Quest 3 poses, OpenVR overlays, and IL-2's cockpit share one coordinate space without `180°` yaw flips. Supports instant head recentering, 3D grip world-translation (`Yaw` locked), coarse/fine nudges (`2 mm / 0.5°`), and `+25 cm` diagnostic test.
 - **6DoF Virtual Stick & Throttle (`Pillar 2`):** Uses horizontal pilot-frame projections + One-Euro adaptive filtering + deadzone/expo shaping. Choose **`Free Mode`** (center resets wherever you close Grip) or **`Anchored Mode`** (fixed 3D cockpit stick/throttle anchors with `14 cm` proximity haptic cues and **`Position Controls`** calibration submode that neutralizes flight axes while positioning anchors in `config/controls.anchors.json`). Includes single-axis **Auto-Bind** calibration sweeps (`4.2 s`) so IL-2's key-mapping wizard detects each axis cleanly without 6DoF crosstalk.
 - **3D Hand Gizmo & Euler Readout:** Toggleable OpenVR orientation arrow overlays (`Forward -Z`, `Right +X`) for both controllers and anchored cockpit controls, paired with live `Pitch / Roll / Yaw` degree readouts.
-- **DirectInput-Safe VR Menu Mouse:** Renders a `16:9` cyan 3D frame + glowing 3D ray-intersection cursor dot clipped to the screen plane, feeding smoothed pure relative `MOUSEEVENTF_MOVE` deltas so IL-2's exclusive DirectInput menu cursor tracks smoothly without edge runaway.
+- **DirectInput-Safe VR Menu Mouse & Curved Screen (`v0.8.1`):** Renders a `16:9` cyan 3D frame (flat or cylindrical curvature `0.00-0.35`), icon-only bottom Grab Bar (Move + `✕`), upright perpendicular floor lock, Yaw/Pitch alignment controls, and 3D tangent cursor dot, feeding smoothed pure relative `MOUSEEVENTF_MOVE` deltas without edge runaway.
+- **IL-2 Telemetry Haptics (`v0.8.2`):** Automatically configures `motiondevice` & `telemetrydevice` in `data/startup.cfg` (with `.bak_il2vr` backup) and mixes independent Quest 3 haptic channels (**Aircraft Shake/Buffet**, **Gunfire on Trigger Hand**, **Rhythmic Engine RPM/Power**, and **Impacts/Damage**) in the **Haptics** tab.
 
 ---
 
@@ -267,7 +283,9 @@ il2_vr_qol/
 │   ├── seat/SeatManager.*        # Backups do Chaperone, recenter e deslocamento em espaço do piloto
 │   ├── output/VJoyClient.*       # Interface vJoy DLL + auto-reconfiguração Admin dos 8 eixos
 │   ├── output/KeyboardInjector.* # SendInput (teclas para NumPad 5 + deltas relativos/cliques/scroll de mouse)
-│   └── telemetry/Telemetry*.*    # Listener UDP para telemetria do jogo
+│   ├── telemetry/Telemetry*.*    # Listener UDP com fila FIFO para pacotes do IL-2
+│   ├── telemetry/Il2Telemetry*.* # Parser binário (motiondevice + telemetrydevice) & startup.cfg
+│   └── haptics/HapticsMixer.*    # Mixer háptico independente (buffet, tiros, RPM do motor, impactos)
 ├── config/
 │   ├── locales/                  # Traduções modulares (pt-BR.json, en-US.json)
 │   └── examples/                 # Exemplos de perfis, atalhos e hotspots

@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <deque>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -23,6 +24,7 @@ public:
     bool isRunning() const { return running_.load(); }
     uint64_t packetCount() const { return packetCount_.load(); }
     std::vector<uint8_t> lastPacket() const;
+    std::vector<std::vector<uint8_t>> drainPackets();
     uint16_t boundPort() const { return port_; }
 
     static bool sendTestPacket(
@@ -41,6 +43,7 @@ private:
 
     mutable std::mutex mutex_;
     std::vector<uint8_t> lastPacket_;
+    std::deque<std::vector<uint8_t>> pendingPackets_;
 };
 
 } // namespace il2vr
