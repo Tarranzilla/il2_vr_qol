@@ -69,6 +69,14 @@ public:
         const Mat34& throttlePose,
         bool stickHighlighted,
         bool throttleHighlighted);
+    void updateMouseScreenOverlays(
+        bool visible,
+        const Mat34& screenPose,
+        float widthM,
+        float heightM,
+        bool cursorVisible,
+        const Vec3& cursorWorldPoint,
+        bool cursorPressed);
 
 private:
     void createHudOverlay();
@@ -77,6 +85,8 @@ private:
     void destroyLaserOverlay();
     void createGizmoOverlays();
     void destroyGizmoOverlays();
+    void createMouseOverlays();
+    void destroyMouseOverlays();
     void applyHudTransform();
 
     vr::IVRSystem* system_ = nullptr;
@@ -87,6 +97,8 @@ private:
     uint64_t rightGizmoOverlayHandle_ = 0;
     uint64_t stickAnchorOverlayHandle_ = 0;
     uint64_t throttleAnchorOverlayHandle_ = 0;
+    uint64_t mouseScreenOverlayHandle_ = 0;
+    uint64_t mouseCursorOverlayHandle_ = 0;
     bool overlayVisible_ = true;
     bool hudAnchored_ = false;
     Mat34 hudSeatedPose_ = Mat34::identity();

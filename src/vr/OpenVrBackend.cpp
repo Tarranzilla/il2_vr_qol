@@ -128,6 +128,7 @@ bool OpenVrBackend::init(bool allowAutoLaunch) {
         createHudOverlay();
         createLaserOverlay();
         createGizmoOverlays();
+        createMouseOverlays();
         return true;
     }
 
@@ -139,6 +140,7 @@ bool OpenVrBackend::init(bool allowAutoLaunch) {
         createHudOverlay();
         createLaserOverlay();
         createGizmoOverlays();
+        createMouseOverlays();
         return true;
     }
 
@@ -148,6 +150,7 @@ bool OpenVrBackend::init(bool allowAutoLaunch) {
 }
 
 void OpenVrBackend::shutdown() {
+    destroyMouseOverlays();
     destroyGizmoOverlays();
     destroyLaserOverlay();
     destroyHudOverlay();
@@ -598,6 +601,170 @@ void OpenVrBackend::updateControlAnchorOverlays(
     updateOne(throttleAnchorOverlayHandle_, throttlePose, throttleHighlighted);
 }
 
+void OpenVrBackend::createMouseOverlays() {
+    auto* overlay = vr::VROverlay();
+    if (overlay == nullptr) {
+        return;
+    }
+
+    if (mouseScreenOverlayHandle_ == 0) {
+        vr::VROverlayHandle_t h = vr::k_ulOverlayHandleInvalid;
+        if (overlay->CreateOverlay("il2vr.qol.mouse.screen", "IL-2 VR Mouse Screen", &h) == vr::VROverlayError_None
+            && h != vr::k_ulOverlayHandleInvalid) {
+            mouseScreenOverlayHandle_ = h;
+            constexpr uint32_t kW = 256;
+            constexpr uint32_t kH = 144;
+            std::vector<uint8_t> px(kW * kH * 4, 0);
+            auto setPx = [&](int x, int y, uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+                if (x < 0 || x >= static_cast<int>(kW) || y < 0 || y >= static_cast<int>(kH)) {
+                    return;
+                }
+                const size_t idx = (static_cast<size_t>(y) * kW + static_cast<size_t>(x)) * 4;
+                px[idx + 0] = r;
+                px[idx + 1] = g;
+                px[idx + 2] = b;
+                px[idx + 3] = a;
+            };
+
+            for (int y = 0; y < static_cast<int>(kH); ++y) {
+                for (int x = 0; x < static_cast<int>(kW); ++x) {
+                    const int dxEdge = std::min(x, static_cast<int>(kW) - 1 - x);
+                    const int dyEdge = std::min(y, static_cast<int>(kH) - 1 - y);
+                    const bool outerBorder = (dxEdge <= 1) || (dyEdge <= 1);
+                    const bool inCorner = (dxEdge < 24 && dyEdge <= 2) || (dyEdge < 24 && dxEdge <= 2);
+                    if (inCorner) {
+                        setPx(x, y, 110, 245, 255, 210);
+                    } else if (outerBorder) {
+                        setPx(x, y, 80, 220, 255, 110);
+                    }
+                }
+            }
+            const int midX = static_cast<int>(kW) / 2;
+            const int midY = static_cast<int>(kH) / 2;
+            for (int d = -4; d <= 4; ++d) {
+                setPx(midX + d, midY, 120, 235, 255, 90);
+                setPx(midX, midY + d, 120, 235, 255, 90);
+            }
+
+            overlay->SetOverlayWidthInMeters(h, 1.60f);
+            overlay->SetOverlayAlpha(h, 0.90f);
+            overlay->SetOverlayInputMethod(h, vr::VROverlayInputMethod_None);
+            overlay->SetOverlayRaw(h, px.data(), kW, kH, 4);
+            overlay->HideOverlay(h);
+        }
+    }
+
+    if (mouseCursorOverlayHandle_ == 0) {
+        vr::VROverlayHandle_t h = vr::k_ulOverlayHandleInvalid;
+        if (overlay->CreateOverlay("il2vr.qol.mouse.cursor", "IL-2 VR Mouse Cursor", &h) == vr::VROverlayError_None
+            && h != vr::k_ulOverlayHandleInvalid) {
+            mouseCursorOverlayHandle_ = h;
+            constexpr uint32_t kSize = 64;
+            std::vector<uint8_t> px(kSize * kSize * 4, 0);
+            const float cx = 31.5f;
+            const float cy = 31.5f;
+            for (int y = 0; y < static_cast<int>(kSize); ++y) {
+                for (int x = 0; x < static_cast<int>(kSize); ++x) {
+                    const float dx = static_cast<float>(x) - cx;
+                    const float dy = static_cast<float>(y) - cy;
+                    const float dist = std::sqrt(dx * dx + dy * dy);
+                    const size_t idx = (static_cast<size_t>(y) * kSize + static_cast<size_t>(x)) * 4;
+                    if (dist <= 6.0f) {
+                        px[idx + 0] = 255;
+                        px[idx + 1] = 230;
+                        px[idx + 2] = 75;
+                        px[idx + 3] = 250;
+                    } else if (dist >= 22.0f && dist <= 26.0f) {
+                        px[idx + 0] = 80;
+                        px[idx + 1] = 245;
+                        px[idx + 2] = 255;
+                        px[idx + 3] = 245;
+                    } else if ((std::fabs(dx) <= 1.5f && dist >= 10.0f && dist <= 20.0f)
+                        || (std::fabs(dy) <= 1.5f && dist >= 10.0f && dist <= 20.0f)) {
+                        px[idx + 0] = 255;
+                        px[idx + 1] = 255;
+                        px[idx + 2] = 255;
+                        px[idx + 3] = 220;
+                    }
+                }
+            }
+
+            overlay->SetOverlayWidthInMeters(h, 0.048f);
+            overlay->SetOverlayAlpha(h, 0.98f);
+            overlay->SetOverlayInputMethod(h, vr::VROverlayInputMethod_None);
+            overlay->SetOverlayRaw(h, px.data(), kSize, kSize, 4);
+            overlay->HideOverlay(h);
+        }
+    }
+}
+
+void OpenVrBackend::destroyMouseOverlays() {
+    auto* overlay = vr::VROverlay();
+    const auto destroyOne = [&](uint64_t& handle) {
+        if (handle != 0) {
+            if (overlay != nullptr) {
+                overlay->DestroyOverlay(handle);
+            }
+            handle = 0;
+        }
+    };
+    destroyOne(mouseScreenOverlayHandle_);
+    destroyOne(mouseCursorOverlayHandle_);
+}
+
+void OpenVrBackend::updateMouseScreenOverlays(
+    bool visible,
+    const Mat34& screenPose,
+    float widthM,
+    float /*heightM*/,
+    bool cursorVisible,
+    const Vec3& cursorWorldPoint,
+    bool cursorPressed) {
+    auto* overlay = vr::VROverlay();
+    if (overlay == nullptr) {
+        return;
+    }
+
+    if (!visible) {
+        if (mouseScreenOverlayHandle_ != 0) {
+            overlay->HideOverlay(mouseScreenOverlayHandle_);
+        }
+        if (mouseCursorOverlayHandle_ != 0) {
+            overlay->HideOverlay(mouseCursorOverlayHandle_);
+        }
+        return;
+    }
+
+    if (mouseScreenOverlayHandle_ != 0) {
+        const vr::HmdMatrix34_t mat = toOvr(screenPose);
+        overlay->SetOverlayWidthInMeters(mouseScreenOverlayHandle_, std::max(widthM, 0.40f));
+        overlay->SetOverlayTransformAbsolute(
+            mouseScreenOverlayHandle_,
+            vr::TrackingUniverseStanding,
+            &mat);
+        overlay->ShowOverlay(mouseScreenOverlayHandle_);
+    }
+
+    if (mouseCursorOverlayHandle_ != 0) {
+        if (!cursorVisible) {
+            overlay->HideOverlay(mouseCursorOverlayHandle_);
+        } else {
+            Mat34 cursorPose = screenPose;
+            cursorPose.m[0][3] = cursorWorldPoint.x + screenPose.m[0][2] * 0.002f;
+            cursorPose.m[1][3] = cursorWorldPoint.y + screenPose.m[1][2] * 0.002f;
+            cursorPose.m[2][3] = cursorWorldPoint.z + screenPose.m[2][2] * 0.002f;
+            const vr::HmdMatrix34_t mat = toOvr(cursorPose);
+            overlay->SetOverlayWidthInMeters(mouseCursorOverlayHandle_, cursorPressed ? 0.036f : 0.048f);
+            overlay->SetOverlayAlpha(mouseCursorOverlayHandle_, 0.98f);
+            overlay->SetOverlayTransformAbsolute(
+                mouseCursorOverlayHandle_,
+                vr::TrackingUniverseStanding,
+                &mat);
+            overlay->ShowOverlay(mouseCursorOverlayHandle_);
+        }
+    }
+}
+
 void OpenVrBackend::updateLaserOverlay(
     bool visible,
     const Vec3& startSeated,
@@ -670,11 +837,6 @@ void OpenVrBackend::setOverlayVisible(bool visible) {
             } else {
                 overlay->HideOverlay(overlayHandle_);
             }
-        }
-    }
-    if (!overlayVisible_ && laserOverlayHandle_ != 0) {
-        if (auto* overlay = vr::VROverlay()) {
-            overlay->HideOverlay(laserOverlayHandle_);
         }
     }
 }
