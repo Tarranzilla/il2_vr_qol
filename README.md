@@ -1,4 +1,4 @@
-# IL-2 VR QoL Companion (`v0.7.0`)
+# IL-2 VR QoL Companion (`v0.8.0`)
 
 **VR Quality of Life & Virtual Flight Controls Companion** for *IL-2 Sturmovik: Great Battles* (Meta Quest 3 / SteamVR).
 
@@ -9,7 +9,7 @@ Companion app de **Qualidade de Vida, Controles Virtuais 6DoF e Mouse VR** para 
 
 ---
 
-## Implemented Features / Recursos Implementados (`v0.1.0` → `v0.7.0`)
+## Implemented Features / Recursos Implementados (`v0.1.0` → `v0.8.0`)
 
 - **3D Seat / VR Origin Positioning (`v0.1.0` + `v0.2.0`):**
   - Triple-click **`3x R3`** (Right Stick Click): Toggle between **Flight Mode** and **Origin 3D Drag Mode** (grab anywhere with Grip to translate the cockpit origin with zero rotation).
@@ -24,8 +24,11 @@ Companion app de **Qualidade de Vida, Controles Virtuais 6DoF e Mouse VR** para 
   - Automatic `vJoy` recovery, 8-axis admin configurator, IL-2 `devices.txt` profile sync (`joyN`), and jitter-free **Auto-Bind** calibration sweeps.
 - **Toggleable 3D Hand Arrows & Euler Rotation Gizmo (`v0.4.0`):**
   - Real-time 3D OpenVR directional overlays (`Forward -Z`, `Right +X`) on both controllers and anchored cockpit controls, plus live Pitch / Roll / Yaw angle readouts in degrees.
-- **VR Raycaster Mouse in IL-2 Menus (`v0.5.0`):**
-  - Point your Quest 3 controller ray at the IL-2 screen to move the Windows cursor, Left Click (`Trigger`), Right Click (`A/X`), and Scroll (`Thumbstick Y`), with automatic vJoy weapon lock while Mouse Mode is active.
+- **VR Raycaster Mouse in IL-2 Menus (`v0.5.0` → `v0.8.0`):**
+  - Press **`X` (Left controller)** to toggle VR Menu Mouse (automatically hiding centered HUD panels so the menu stays clear).
+  - Projects onto an interactive **3D Virtual Menu Screen** (with cyan frame & 3D ray-intersection cursor dot) using DirectInput-compatible smooth relative deltas (`MOUSEEVENTF_MOVE`).
+  - Hold **Grip** in VR Mouse Mode to drag/align the virtual screen directly over IL-2's menu (`Stick Y` = distance, `Stick X` = width), persisted automatically in `config/settings.json`.
+  - **Trigger** = Left Click, **`A`** = Right Click, **Stick Y** = Scroll, with automatic vJoy weapon lock.
 - **Modular i18n Translation System (`v0.6.0` & `v0.7.0`):**
   - Community-extensible JSON locale files in [`config/locales/`](config/locales/) (`pt-BR` and `en-US` included out of the box) with live in-VR switching in the **Languages / Idiomas** tab.
 
@@ -37,6 +40,8 @@ Companion app de **Qualidade de Vida, Controles Virtuais 6DoF e Mouse VR** para 
 |---|---|
 | Open / Close VR HUD (`Abrir/Fechar HUD VR`) | **`3x L3`** (Left stick triple-click) or `Ctrl+Alt+O` |
 | Flight Mode ↔ Edit VR Origin (`Modo Voo <-> Origem 3D`) | **`3x R3`** (Right stick triple-click) |
+| Toggle VR Menu Mouse (`Ativar/Desativar Mouse VR`) | **`X`** Button (Left controller) |
+| Move / Resize Mouse Screen (`Ajustar Tela do Mouse VR`) | Hold **Grip** (+ **Stick Y** depth, **Stick X** size) |
 | Reposition HUD Window (`Mover Painel HUD`) | Hold **Trigger** or **Grip** on the bottom HUD Grab Bar (+ **Stick Y** for depth) |
 | Grab Virtual Stick / Throttle (`Manche / Manete`) | Hold **Right Grip** / **Left Grip** |
 | Recenter Origin at Head (`Recentralizar na Cabeça`) | **`Y`** Button (Left controller) |

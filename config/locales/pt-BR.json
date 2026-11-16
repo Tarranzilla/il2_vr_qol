@@ -58,7 +58,7 @@
     "btn.mouse_vr_on": "MOUSE VR NOS MENUS: ATIVO (Gatilho=Clique) [Botao X]",
     "btn.mouse_vr_off": "ATIVAR MOUSE VR NOS MENUS DO JOGO [Botao X Esq]",
     "warn.sandbox_sendinput": "AVISO: SendInput bloqueado (processo em sandbox). Feche e abra iniciar_mod_il2_vr.bat pelo Windows Explorer!",
-    "lbl.mouse_hint": "Aponte para a tela do IL-2: Gatilho=Clique Esq | A=Clique Dir | Analogico Y=Scroll",
+    "lbl.mouse_hint": "Gatilho=Clique Esq | A=Clique Dir | Segurar GRIP=Mover/Aproximar Tela Mouse (Analogico=Dist/Tam)",
     "lbl.angles_title": "Angulos das Maos (Pitch / Roll / Yaw):",
     "lbl.lang_select": "Selecione o Idioma do HUD:",
     "lbl.lang_active": "Idioma ativo:",

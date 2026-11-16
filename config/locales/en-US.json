@@ -58,7 +58,7 @@
     "btn.mouse_vr_on": "VR MENU MOUSE: ACTIVE (Trigger=Click) [X Button]",
     "btn.mouse_vr_off": "ENABLE VR MOUSE IN GAME MENUS [Left X Button]",
     "warn.sandbox_sendinput": "WARNING: SendInput blocked (sandboxed process). Close and run iniciar_mod_il2_vr.bat from Windows Explorer!",
-    "lbl.mouse_hint": "Point at IL-2 screen: Trigger=Left Click | A=Right Click | Stick Y=Scroll",
+    "lbl.mouse_hint": "Trigger=Left Click | A=Right Click | Hold GRIP=Move/Pull Mouse Screen (Stick=Dist/Size)",
     "lbl.angles_title": "Hand Rotation Angles (Pitch / Roll / Yaw):",
     "lbl.lang_select": "Select HUD Language:",
     "lbl.lang_active": "Active language:",

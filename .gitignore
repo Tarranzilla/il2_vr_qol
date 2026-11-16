@@ -23,3 +23,5 @@ CMakeUserPresets.json
 /tools/captures/
 il2vr_status.txt
 imgui.ini
+config/settings.json
+config/controls.anchors.json
