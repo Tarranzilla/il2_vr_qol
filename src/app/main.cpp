@@ -623,6 +623,30 @@ uint32_t findProcessIdByName(const wchar_t* exeName) {
     return foundPid;
 }
 
+bool isProcessOlderThanFile(uint32_t pid, const std::filesystem::path& filePath) {
+    if (pid == 0 || filePath.empty()) {
+        return false;
+    }
+    WIN32_FILE_ATTRIBUTE_DATA fileData{};
+    if (!GetFileAttributesExW(filePath.c_str(), GetFileExInfoStandard, &fileData)) {
+        return false;
+    }
+    HANDLE proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (proc == nullptr) {
+        return false;
+    }
+    FILETIME creationFt{};
+    FILETIME exitFt{};
+    FILETIME kernelFt{};
+    FILETIME userFt{};
+    const BOOL ok = GetProcessTimes(proc, &creationFt, &exitFt, &kernelFt, &userFt);
+    CloseHandle(proc);
+    if (!ok) {
+        return false;
+    }
+    return CompareFileTime(&creationFt, &fileData.ftLastWriteTime) < 0;
+}
+
 HWND findMainWindowByPid(uint32_t targetPid) {
     if (targetPid == 0) {
         return nullptr;
@@ -1082,17 +1106,19 @@ int main(int argc, char** argv) {
     int il2VJoyConfigId = detectIl2VJoyConfigId(il2InputDir);
     std::string il2SyncStatus;
     std::string il2TelemetryCfgStatus;
+    std::filesystem::path telemetryStartupCfgPath;
     bool telemetryRestartNeeded = false;
     if (!il2InputDir.empty()) {
         syncIl2InputProfilesForVJoy(il2InputDir, il2VJoyConfigId, il2SyncStatus);
-        const std::filesystem::path startupCfgPath = il2InputDir.parent_path() / "startup.cfg";
+        telemetryStartupCfgPath = il2InputDir.parent_path() / "startup.cfg";
         bool modified = false;
         if (il2vr::configureIl2StartupCfgTelemetry(
-                startupCfgPath.string(),
+                telemetryStartupCfgPath.string(),
                 static_cast<uint16_t>(telemetryPort),
                 modified,
                 il2TelemetryCfgStatus)) {
-            if (modified && findProcessIdByName(L"Il-2.exe") != 0) {
+            const uint32_t startupIl2Pid = findProcessIdByName(L"Il-2.exe");
+            if (startupIl2Pid != 0 && (modified || isProcessOlderThanFile(startupIl2Pid, telemetryStartupCfgPath))) {
                 telemetryRestartNeeded = true;
             }
         }
@@ -1100,7 +1126,13 @@ int main(int argc, char** argv) {
         il2SyncStatus = "Pasta data/input do IL-2 nao detectada";
         il2TelemetryCfgStatus = il2SyncStatus;
     }
-    telemetry.start("127.0.0.1", static_cast<uint16_t>(telemetryPort));
+    if (!telemetry.start("127.0.0.1", static_cast<uint16_t>(telemetryPort))) {
+        il2TelemetryCfgStatus = "Erro UDP " + std::to_string(telemetryPort) + ": " + telemetry.lastError();
+    }
+    bool hasAnyTelemetryPacket = false;
+    auto lastTelemetryPacketAt = std::chrono::steady_clock::now();
+    uint16_t lastHapticsLeftUs = 0;
+    uint16_t lastHapticsRightUs = 0;
     bool vjoyAxesReady = vjoy.hasRequiredFlightAxes(1);
     std::string vjoyAxesDesc = vjoy.describeEnabledAxes(1);
 
@@ -1557,6 +1589,14 @@ int main(int argc, char** argv) {
                 if (prevIl2Pid != 0 && il2Pid == 0) {
                     syncIl2InputProfilesForVJoy(il2InputDir, il2VJoyConfigId, il2SyncStatus);
                     lastHotkeyAction = il2SyncStatus;
+                    telemetryRestartNeeded = false;
+                    il2Telemetry.clearLiveTelemetryState();
+                    hasAnyTelemetryPacket = false;
+                } else if (telemetry.packetCount() > 0 || il2Pid == 0) {
+                    telemetryRestartNeeded = false;
+                } else if (!telemetryStartupCfgPath.empty() &&
+                           isProcessOlderThanFile(il2Pid, telemetryStartupCfgPath)) {
+                    telemetryRestartNeeded = true;
                 }
             }
         }
@@ -2433,17 +2473,32 @@ int main(int argc, char** argv) {
             prevRayClickDown = false;
         }
 
-        for (const auto& pkt : telemetry.drainPackets()) {
-            il2vr::Il2TelemetryParser::feedPacket(pkt, il2Telemetry);
+        const auto telemetryPackets = telemetry.drainPackets();
+        if (!telemetryPackets.empty()) {
+            for (const auto& pkt : telemetryPackets) {
+                il2vr::Il2TelemetryParser::feedPacket(pkt, il2Telemetry);
+            }
+            hasAnyTelemetryPacket = true;
+            lastTelemetryPacketAt = now;
+            telemetryRestartNeeded = false;
+        } else if (hasAnyTelemetryPacket &&
+                   std::chrono::duration<float>(now - lastTelemetryPacketAt).count() > 0.65f) {
+            il2Telemetry.clearLiveTelemetryState();
+            hasAnyTelemetryPacket = false;
         }
         if (vr.isInitialized() && vrState.runtimeRunning) {
             const il2vr::HapticsFrameOutput hapticsOut = hapticsMixer.update(il2Telemetry, testThrottle, dtSeconds);
+            lastHapticsLeftUs = hapticsOut.leftDurationUs;
+            lastHapticsRightUs = hapticsOut.rightDurationUs;
             if (hapticsOut.leftDurationUs > 0) {
                 vr.triggerHapticPulse(il2vr::VrHand::Left, hapticsOut.leftDurationUs);
             }
             if (hapticsOut.rightDurationUs > 0) {
                 vr.triggerHapticPulse(il2vr::VrHand::Right, hapticsOut.rightDurationUs);
             }
+        } else {
+            lastHapticsLeftUs = 0;
+            lastHapticsRightUs = 0;
         }
         il2Telemetry.clearPendingEvents();
 
@@ -2516,6 +2571,12 @@ int main(int argc, char** argv) {
                 vr.isInitialized() ? "OK" : "--",
                 vr.isOverlayMode() ? "On" : "Off",
                 showVrHud ? "On" : "Off");
+        }
+        if (telemetryRestartNeeded) {
+            ImGui::TextColored(
+                ImVec4(1.0f, 0.78f, 0.20f, 1.0f),
+                "%s",
+                locale.tr("warn.restart_il2_tel", "Reinicie o IL-2 uma vez para iniciar o streaming UDP!"));
         }
         if (!vr.isInitialized()) {
             ImGui::TextWrapped("Status: %s", vr.lastError().c_str());
@@ -3073,6 +3134,9 @@ int main(int argc, char** argv) {
                 ImGui::EndDisabled();
 
                 if (hChanged) {
+                    if (!hCfg.masterEnabled || !hCfg.buffetEnabled) {
+                        hapticsMixer.stopTestEffects();
+                    }
                     hapticsMixer.setConfig(hCfg);
                     saveCurrentSettings();
                 }
@@ -3083,8 +3147,7 @@ int main(int argc, char** argv) {
                 }
                 ImGui::SameLine();
                 if (ImGui::Button(locale.tr("btn.test_buffet", "Testar Tremor"))) {
-                    il2Telemetry.stallBuffetAmp = 0.85f;
-                    il2Telemetry.hasState = true;
+                    hapticsMixer.triggerTestBuffet(0.85f, 0.45f);
                 }
                 ImGui::SameLine();
                 if (ImGui::Button(locale.tr("btn.test_impact", "Testar Impacto"))) {
@@ -3092,16 +3155,21 @@ int main(int argc, char** argv) {
                     il2Telemetry.pendingPeakImpact = 0.90f;
                 }
                 ImGui::SameLine();
+                if (ImGui::Button(locale.tr("btn.stop_haptics_test", "Parar"))) {
+                    hapticsMixer.stopTestEffects();
+                }
                 if (ImGui::Button(locale.tr("btn.cfg_telemetry", "Ativar Telemetria (startup.cfg)"))) {
                     if (!il2InputDir.empty()) {
                         bool mod = false;
-                        const std::filesystem::path startupCfgPath = il2InputDir.parent_path() / "startup.cfg";
+                        const std::filesystem::path startupCfgPath = telemetryStartupCfgPath.empty()
+                            ? (il2InputDir.parent_path() / "startup.cfg")
+                            : telemetryStartupCfgPath;
                         il2vr::configureIl2StartupCfgTelemetry(
                             startupCfgPath.string(),
                             static_cast<uint16_t>(telemetryPort),
                             mod,
                             il2TelemetryCfgStatus);
-                        if (mod && il2Pid != 0) {
+                        if (il2Pid != 0 && (mod || isProcessOlderThanFile(il2Pid, startupCfgPath))) {
                             telemetryRestartNeeded = true;
                         }
                         lastHotkeyAction = il2TelemetryCfgStatus;
@@ -3114,6 +3182,11 @@ int main(int argc, char** argv) {
                         "%s",
                         locale.tr("warn.restart_il2_tel", "Reinicie o IL-2 uma vez para iniciar o streaming UDP!"));
                 }
+                ImGui::Text("UDP:%u (%s) | Out(L:%u R:%u us)",
+                    static_cast<unsigned>(telemetry.boundPort()),
+                    telemetry.isRunning() ? "OK" : "ERRO",
+                    static_cast<unsigned>(lastHapticsLeftUs),
+                    static_cast<unsigned>(lastHapticsRightUs));
                 ImGui::Text("Plane: %s | RPM: %.0f | IAS: %.0f km/h | Buffet: %.2f | Pkts(M:%llu S:%llu)",
                     il2Telemetry.aircraftName.empty() ? "--" : il2Telemetry.aircraftName.c_str(),
                     il2Telemetry.maxRpm(),
@@ -3225,10 +3298,13 @@ int main(int argc, char** argv) {
                     << "EixosVJoy: " << vjoyAxesDesc
                     << " | IL2_vJoy_ID: joy" << il2VJoyConfigId << "\n"
                     << "Telemetry: pkts=" << telemetry.packetCount()
+                    << " udp=" << (telemetry.isRunning() ? telemetry.boundPort() : 0)
                     << " motion=" << il2Telemetry.motionPacketCount
                     << " state=" << il2Telemetry.statePacketCount
                     << " rpm=" << il2Telemetry.maxRpm()
-                    << " haptics=" << (hapticsMixer.config().masterEnabled ? "On" : "Off") << "\n"
+                    << " haptics=" << (hapticsMixer.config().masterEnabled ? "On" : "Off")
+                    << " outUs=(" << lastHapticsLeftUs << "," << lastHapticsRightUs << ")"
+                    << " restartNeeded=" << (telemetryRestartNeeded ? 1 : 0) << "\n"
                     << "UltimaAcao: " << lastHotkeyAction << "\n";
             }
         }

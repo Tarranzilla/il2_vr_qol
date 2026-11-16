@@ -586,3 +586,62 @@ TEST_CASE("HapticsMixer routes independent channels and respects master and UI p
     CHECK(out.leftDurationUs == 0);
     CHECK(out.rightDurationUs == 0);
 }
+
+TEST_CASE("HapticsMixer timed test buffet stops cleanly and never loops infinitely", "[haptics]") {
+    il2vr::HapticsMixer mixer;
+    il2vr::Il2TelemetrySnapshot emptySnap{};
+
+    mixer.triggerTestBuffet(0.85f, 0.45f);
+    REQUIRE(mixer.hasActiveTest());
+
+    il2vr::HapticsFrameOutput out{};
+    for (int i = 0; i < 10; ++i) {
+        out = mixer.update(emptySnap, 0.0f, 0.020f);
+    }
+    CHECK(out.buffetLevel > 0.30f);
+    CHECK(out.leftDurationUs > 0);
+    CHECK(out.rightDurationUs > 0);
+
+    // Advance past duration + decay tail: must return cleanly to 0 on both controllers.
+    for (int i = 0; i < 40; ++i) {
+        out = mixer.update(emptySnap, 0.0f, 0.025f);
+    }
+    CHECK_FALSE(mixer.hasActiveTest());
+    CHECK(out.buffetLevel == 0.0f);
+    CHECK(out.leftDurationUs == 0);
+    CHECK(out.rightDurationUs == 0);
+}
+
+TEST_CASE("HapticsMixer feels takeoff ground-roll, high-G turns, and silences when frozen or cleared", "[haptics]") {
+    il2vr::HapticsMixer mixer;
+    il2vr::Il2TelemetrySnapshot snap{};
+    snap.hasState = true;
+    snap.engineCount = 1;
+    snap.rpm[0] = 2200.0f;
+    snap.maxGearPressure = 0.65f;
+    snap.indicatedAirspeedMps = 28.0f;
+    snap.stateAcc[0] = 0.0f;
+    snap.stateAcc[1] = 9.81f;
+    snap.stateAcc[2] = 0.0f;
+
+    il2vr::HapticsFrameOutput out{};
+    for (int i = 0; i < 12; ++i) {
+        out = mixer.update(snap, 0.9f, 0.020f);
+    }
+    CHECK(out.buffetLevel > 0.15f);
+    CHECK(out.leftDurationUs > 0);
+
+    // Identical tick >= 8 marks snapshot frozen (menu/paused MP), silencing live telemetry.
+    snap.frozen = true;
+    for (int i = 0; i < 20; ++i) {
+        out = mixer.update(snap, 0.9f, 0.025f);
+    }
+    CHECK(out.buffetLevel == 0.0f);
+    CHECK(out.leftDurationUs == 0);
+    CHECK(out.rightDurationUs == 0);
+
+    snap.clearLiveTelemetryState();
+    CHECK_FALSE(snap.hasState);
+    CHECK(snap.maxRpm() == 0.0f);
+    CHECK(snap.stallBuffetAmp == 0.0f);
+}

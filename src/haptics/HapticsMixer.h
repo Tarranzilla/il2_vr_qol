@@ -48,6 +48,9 @@ public:
     void setConfig(const HapticsConfig& cfg) noexcept { cfg_ = cfg; }
 
     void notifyInteractionPulse(bool isLeftHand, float holdSeconds = 0.06f) noexcept;
+    void triggerTestBuffet(float amplitude = 0.85f, float durationSeconds = 0.45f) noexcept;
+    void stopTestEffects() noexcept;
+    bool hasActiveTest() const noexcept { return testBuffetTimer_ > 0.0f || gunDecayTimer_ > 0.0f || impactHold_ > 0.0f; }
     void reset() noexcept;
 
     HapticsFrameOutput update(
@@ -72,6 +75,9 @@ private:
 
     float impactHold_ = 0.0f;
     float impactPeak_ = 0.0f;
+
+    float testBuffetTimer_ = 0.0f;
+    float testBuffetAmp_ = 0.0f;
 
     float leftInteractionHold_ = 0.0f;
     float rightInteractionHold_ = 0.0f;

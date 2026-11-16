@@ -10,9 +10,11 @@ struct Il2TelemetrySnapshot {
     bool hasMotion = false;
     bool hasState = false;
     bool paused = false;
+    bool frozen = false;
 
     uint32_t lastMotionTick = 0;
     uint32_t lastStateTick = 0;
+    uint32_t identicalTickRun = 0;
     uint64_t motionPacketCount = 0;
     uint64_t statePacketCount = 0;
 
@@ -20,6 +22,8 @@ struct Il2TelemetrySnapshot {
     int engineCount = 0;
     float rpm[4]{};
     float manifoldPressurePa[4]{};
+    float engineShakeFreq = 0.0f;
+    float engineShakeAmp = 0.0f;
     float indicatedAirspeedMps = 0.0f;
 
     // Body-local linear acceleration [X lateral, Y longitudinal/vertical depending on source, Z] in m/s^2.
@@ -29,6 +33,7 @@ struct Il2TelemetrySnapshot {
     float stallBuffetFreq = 0.0f;
     float stallBuffetAmp = 0.0f;
     float gearPos = 0.0f;
+    float maxGearPressure = 0.0f;
     float flapsPos = 0.0f;
     float airBrakePos = 0.0f;
 
@@ -43,6 +48,7 @@ struct Il2TelemetrySnapshot {
     float maxRpm() const noexcept;
     float maxManifoldPressurePa() const noexcept;
     void clearPendingEvents() noexcept;
+    void clearLiveTelemetryState() noexcept;
 };
 
 class Il2TelemetryParser {

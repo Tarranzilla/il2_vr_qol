@@ -26,6 +26,7 @@ public:
     std::vector<uint8_t> lastPacket() const;
     std::vector<std::vector<uint8_t>> drainPackets();
     uint16_t boundPort() const { return port_; }
+    const std::string& lastError() const { return lastError_; }
 
     static bool sendTestPacket(
         const std::string& targetIp,
@@ -39,6 +40,7 @@ private:
     std::atomic<uint64_t> packetCount_{0};
     uintptr_t socketHandle_ = ~static_cast<uintptr_t>(0);
     uint16_t port_ = 0;
+    std::string lastError_;
     std::thread thread_;
 
     mutable std::mutex mutex_;

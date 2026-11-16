@@ -28,12 +28,15 @@ TelemetryListener::~TelemetryListener() {
 
 bool TelemetryListener::start(const std::string& bindIp, uint16_t port) {
     stop();
+    lastError_.clear();
     if (!ensureWinsock()) {
+        lastError_ = "WSAStartup failed";
         return false;
     }
 
     SOCKET sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (sock == INVALID_SOCKET) {
+        lastError_ = "socket() failed (WSA=" + std::to_string(WSAGetLastError()) + ")";
         return false;
     }
 
@@ -44,11 +47,13 @@ bool TelemetryListener::start(const std::string& bindIp, uint16_t port) {
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
     if (inet_pton(AF_INET, bindIp.c_str(), &addr.sin_addr) != 1) {
+        lastError_ = "Invalid bind IP: " + bindIp;
         closesocket(sock);
         return false;
     }
 
     if (bind(sock, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR) {
+        lastError_ = "bind(" + bindIp + ":" + std::to_string(port) + ") failed (WSA=" + std::to_string(WSAGetLastError()) + ")";
         closesocket(sock);
         return false;
     }

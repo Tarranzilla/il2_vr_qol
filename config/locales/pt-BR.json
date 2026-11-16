@@ -93,6 +93,7 @@
     "btn.test_shot": "Testar Tiro",
     "btn.test_buffet": "Testar Tremor",
     "btn.test_impact": "Testar Impacto",
+    "btn.stop_haptics_test": "Parar",
     "bar.grab_hud": "=== SEGURE AQUI (Gatilho/Grip + Analogico Dist.) PARA MOVER PAINEL ===",
     "guide.text": "Quest 3:\n  3x L3 (Esq): Abrir/Fechar este HUD\n  3x R3 (Dir): Alternar Voo <-> Editar Origem 3D\n  Botao X (Esq): Ativar/Desativar Mouse VR nos Menus do IL-2\n  Segurar GRIP Dir/Esq: Manche 6DoF / Manete Travada\n  Barra inferior do painel: Segurar Gatilho/Grip para mover HUD\n  Botao Y (Esq): Recentralizar Origem na cabeca"
   }

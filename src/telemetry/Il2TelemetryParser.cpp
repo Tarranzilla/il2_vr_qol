@@ -57,6 +57,37 @@ void Il2TelemetrySnapshot::clearPendingEvents() noexcept {
     pendingPeakImpact = 0.0f;
 }
 
+void Il2TelemetrySnapshot::clearLiveTelemetryState() noexcept {
+    hasMotion = false;
+    hasState = false;
+    paused = false;
+    frozen = false;
+    identicalTickRun = 0;
+    engineCount = 0;
+    for (float& v : rpm) {
+        v = 0.0f;
+    }
+    for (float& v : manifoldPressurePa) {
+        v = 0.0f;
+    }
+    engineShakeFreq = 0.0f;
+    engineShakeAmp = 0.0f;
+    indicatedAirspeedMps = 0.0f;
+    for (float& v : motionAcc) {
+        v = 0.0f;
+    }
+    for (float& v : stateAcc) {
+        v = 0.0f;
+    }
+    stallBuffetFreq = 0.0f;
+    stallBuffetAmp = 0.0f;
+    gearPos = 0.0f;
+    maxGearPressure = 0.0f;
+    flapsPos = 0.0f;
+    airBrakePos = 0.0f;
+    clearPendingEvents();
+}
+
 bool Il2TelemetryParser::feedPacket(const std::vector<uint8_t>& packet, Il2TelemetrySnapshot& snapshot) {
     if (packet.size() < 8) {
         return false;
@@ -88,10 +119,16 @@ bool Il2TelemetryParser::feedPacket(const std::vector<uint8_t>& packet, Il2Telem
     const uint32_t tick = readU32(data + 6);
     const uint8_t stateCount = data[10];
 
+    if (snapshot.hasState && tick == snapshot.lastStateTick) {
+        snapshot.identicalTickRun += 1;
+    } else {
+        snapshot.identicalTickRun = 0;
+    }
     snapshot.hasState = true;
     snapshot.lastStateTick = tick;
     snapshot.statePacketCount += 1;
     snapshot.paused = (packetSize == 12);
+    snapshot.frozen = (snapshot.identicalTickRun >= 8);
 
     size_t offset = 11;
     for (uint8_t i = 0; i < stateCount; ++i) {
@@ -122,10 +159,37 @@ bool Il2TelemetryParser::feedPacket(const std::vector<uint8_t>& packet, Il2Telem
             }
             break;
         }
+        case 2: { // EngineShakeFrequency
+            float best = 0.0f;
+            const int n = std::min<int>(floatCount, 4);
+            for (int j = 0; j < n; ++j) {
+                best = std::max(best, readF32(data + offset + static_cast<size_t>(j) * 4u));
+            }
+            snapshot.engineShakeFreq = best;
+            break;
+        }
+        case 3: { // EngineShakeAmplitude
+            float best = 0.0f;
+            const int n = std::min<int>(floatCount, 4);
+            for (int j = 0; j < n; ++j) {
+                best = std::max(best, readF32(data + offset + static_cast<size_t>(j) * 4u));
+            }
+            snapshot.engineShakeAmp = best;
+            break;
+        }
         case 4: { // LandingGearPosition
             if (floatCount >= 1) {
                 snapshot.gearPos = readF32(data + offset);
             }
+            break;
+        }
+        case 5: { // LandingGearPressure
+            float best = 0.0f;
+            const int n = std::min<int>(floatCount, 4);
+            for (int j = 0; j < n; ++j) {
+                best = std::max(best, readF32(data + offset + static_cast<size_t>(j) * 4u));
+            }
+            snapshot.maxGearPressure = best;
             break;
         }
         case 6: { // IndicatedAirspeedMetresSecond
