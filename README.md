@@ -1,6 +1,7 @@
 # IL-2 VR QoL Companion (`v0.8.0`)
 
 ![Version](https://img.shields.io/badge/version-v0.8.0-0ea5e9)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3%20%2B%20Commercial-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/Windows-10%2F11%20x64-0078d4)
 ![VR](https://img.shields.io/badge/VR-Meta%20Quest%203%20%7C%20SteamVR%20OpenVR-6366f1)
 ![C++](https://img.shields.io/badge/C%2B%2B-20%20%7C%20DX11%20%2B%20ImGui-10b981)
@@ -276,3 +277,17 @@ il2_vr_qol/
 ├── iniciar_mod_il2_vr.bat        # Launcher rápido no Windows
 └── reparar_vjoy_eixos.bat        # Configurador rápido vJoy Device 1 (Admin)
 ```
+
+---
+
+## Licença & Incorporação Comercial / License & Commercial Integration
+
+**Copyright © 2026 Tarranzilla (`joaotarran@gmail.com`)**
+
+Este projeto adota **Licenciamento Duplo (*Dual Licensing*)**:
+
+- **Comunidade / Open Source — GNU GPLv3 ([LICENSE](LICENSE)):** Gratuito para jogadores, pesquisadores e contribuidores de código aberto. Qualquer redistribuição ou projeto derivado sob a GPLv3 deve manter o código-fonte aberto sob a mesma licença (**copyleft forte**), incluindo isenção completa de garantias e responsabilidade (Seções 15 e 16 da GPLv3).
+- **Licença Comercial / Proprietária ([COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md)):** Estúdios de jogos, distribuidoras ou fabricantes interessados em **integrar qualquer parte deste código em produtos fechados/comerciais** *(como integração oficial em simuladores proprietários)* sem abrir o código-fonte sob a GPLv3 precisam adquirir uma **licença comercial** com o autor (`joaotarran@gmail.com`).
+- **Contribuições & CLA ([CONTRIBUTING.md](CONTRIBUTING.md)):** Pull requests são muito bem-vindos! Ao contribuir, você mantém seus direitos autorais e autoriza a inclusão tanto na edição **GPLv3** quanto em contratos comerciais do projeto.
+
+> *Dual-licensed under **GNU GPLv3** ([LICENSE](LICENSE)) for open-source community use and a separate **Commercial License** ([COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md)) for proprietary/studio integration. Contact: **Tarranzilla** — `joaotarran@gmail.com`.*
