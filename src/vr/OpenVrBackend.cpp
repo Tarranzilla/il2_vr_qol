@@ -696,6 +696,111 @@ void OpenVrBackend::createMouseOverlays() {
             overlay->HideOverlay(h);
         }
     }
+
+    if (mouseGrabBarOverlayHandle_ == 0) {
+        vr::VROverlayHandle_t h = vr::k_ulOverlayHandleInvalid;
+        if (overlay->CreateOverlay("il2vr.qol.mouse.grabbar", "IL-2 VR Mouse Grab Bar", &h) == vr::VROverlayError_None
+            && h != vr::k_ulOverlayHandleInvalid) {
+            mouseGrabBarOverlayHandle_ = h;
+            overlay->SetOverlayWidthInMeters(h, 0.65f);
+            overlay->SetOverlayAlpha(h, 0.94f);
+            overlay->SetOverlayInputMethod(h, vr::VROverlayInputMethod_None);
+            grabBarHoverMove_ = false;
+            grabBarHoverClose_ = false;
+            applyGrabBarTexture(false, false);
+            overlay->HideOverlay(h);
+        }
+    }
+}
+
+void OpenVrBackend::applyGrabBarTexture(bool hoverMove, bool hoverClose) {
+    if (mouseGrabBarOverlayHandle_ == 0) {
+        return;
+    }
+    auto* overlay = vr::VROverlay();
+    if (overlay == nullptr) {
+        return;
+    }
+
+    constexpr uint32_t kW = 256;
+    constexpr uint32_t kH = 40;
+    std::vector<uint8_t> px(kW * kH * 4, 0);
+
+    for (int y = 0; y < static_cast<int>(kH); ++y) {
+        for (int x = 0; x < static_cast<int>(kW); ++x) {
+            const float fx = static_cast<float>(x);
+            const float fy = static_cast<float>(y);
+
+            // Left/center move pill: horizontal capsule from x=20 to x=184, y=19.5, r=15.
+            const float pxClamped = std::clamp(fx, 20.0f, 184.0f);
+            const float dPill = std::sqrt((fx - pxClamped) * (fx - pxClamped) + (fy - 19.5f) * (fy - 19.5f));
+
+            // Right close circle: center=(230, 19.5), r=15.
+            const float dClose = std::sqrt((fx - 230.0f) * (fx - 230.0f) + (fy - 19.5f) * (fy - 19.5f));
+
+            uint8_t r = 0, g = 0, b = 0, a = 0;
+            if (dPill <= 15.5f) {
+                if (dPill >= 13.8f) {
+                    r = hoverMove ? 140 : 95;
+                    g = hoverMove ? 245 : 210;
+                    b = 255;
+                    a = 240;
+                } else {
+                    r = hoverMove ? 36 : 20;
+                    g = hoverMove ? 95 : 36;
+                    b = hoverMove ? 165 : 58;
+                    a = hoverMove ? 242 : 215;
+                }
+
+                // 4-way move cross icon centered at (102, 19.5).
+                const float mx = fx - 102.0f;
+                const float my = fy - 19.5f;
+                const bool hStem = (std::fabs(my) <= 1.4f && std::fabs(mx) <= 9.0f);
+                const bool vStem = (std::fabs(mx) <= 1.4f && std::fabs(my) <= 9.0f);
+                const bool rArrow = (mx >= 5.0f && mx <= 10.0f && std::fabs(my) <= (10.0f - mx + 0.5f));
+                const bool lArrow = (mx <= -5.0f && mx >= -10.0f && std::fabs(my) <= (10.0f + mx + 0.5f));
+                const bool dArrow = (my >= 5.0f && my <= 10.0f && std::fabs(mx) <= (10.0f - my + 0.5f));
+                const bool uArrow = (my <= -5.0f && my >= -10.0f && std::fabs(mx) <= (10.0f + my + 0.5f));
+                if (hStem || vStem || rArrow || lArrow || dArrow || uArrow) {
+                    r = 240;
+                    g = 250;
+                    b = 255;
+                    a = 250;
+                }
+            } else if (dClose <= 15.5f) {
+                if (dClose >= 13.8f) {
+                    r = 255;
+                    g = hoverClose ? 150 : 110;
+                    b = hoverClose ? 150 : 115;
+                    a = 245;
+                } else {
+                    r = hoverClose ? 190 : 88;
+                    g = hoverClose ? 44 : 28;
+                    b = hoverClose ? 54 : 34;
+                    a = hoverClose ? 248 : 220;
+                }
+
+                // Simplified X close icon centered at (230, 19.5).
+                const float cx = fx - 230.0f;
+                const float cy = fy - 19.5f;
+                if (std::fabs(cx) <= 6.2f && std::fabs(cy) <= 6.2f
+                    && (std::fabs(cx - cy) <= 1.7f || std::fabs(cx + cy) <= 1.7f)) {
+                    r = 255;
+                    g = 245;
+                    b = 245;
+                    a = 252;
+                }
+            }
+
+            const size_t idx = (static_cast<size_t>(y) * kW + static_cast<size_t>(x)) * 4;
+            px[idx + 0] = r;
+            px[idx + 1] = g;
+            px[idx + 2] = b;
+            px[idx + 3] = a;
+        }
+    }
+
+    overlay->SetOverlayRaw(mouseGrabBarOverlayHandle_, px.data(), kW, kH, 4);
 }
 
 void OpenVrBackend::destroyMouseOverlays() {
@@ -710,16 +815,20 @@ void OpenVrBackend::destroyMouseOverlays() {
     };
     destroyOne(mouseScreenOverlayHandle_);
     destroyOne(mouseCursorOverlayHandle_);
+    destroyOne(mouseGrabBarOverlayHandle_);
 }
 
 void OpenVrBackend::updateMouseScreenOverlays(
     bool visible,
     const Mat34& screenPose,
     float widthM,
-    float /*heightM*/,
+    float heightM,
+    float curvature,
     bool cursorVisible,
-    const Vec3& cursorWorldPoint,
-    bool cursorPressed) {
+    const Mat34& cursorWorldPose,
+    bool cursorPressed,
+    bool grabBarHoverMove,
+    bool grabBarHoverClose) {
     auto* overlay = vr::VROverlay();
     if (overlay == nullptr) {
         return;
@@ -732,12 +841,19 @@ void OpenVrBackend::updateMouseScreenOverlays(
         if (mouseCursorOverlayHandle_ != 0) {
             overlay->HideOverlay(mouseCursorOverlayHandle_);
         }
+        if (mouseGrabBarOverlayHandle_ != 0) {
+            overlay->HideOverlay(mouseGrabBarOverlayHandle_);
+        }
         return;
     }
 
+    const float clampedWidth = std::max(widthM, 0.40f);
+    const float clampedCurv = std::clamp(curvature, 0.0f, 0.45f);
+
     if (mouseScreenOverlayHandle_ != 0) {
         const vr::HmdMatrix34_t mat = toOvr(screenPose);
-        overlay->SetOverlayWidthInMeters(mouseScreenOverlayHandle_, std::max(widthM, 0.40f));
+        overlay->SetOverlayWidthInMeters(mouseScreenOverlayHandle_, clampedWidth);
+        overlay->SetOverlayCurvature(mouseScreenOverlayHandle_, clampedCurv);
         overlay->SetOverlayTransformAbsolute(
             mouseScreenOverlayHandle_,
             vr::TrackingUniverseStanding,
@@ -745,14 +861,35 @@ void OpenVrBackend::updateMouseScreenOverlays(
         overlay->ShowOverlay(mouseScreenOverlayHandle_);
     }
 
+    if (mouseGrabBarOverlayHandle_ != 0) {
+        if (grabBarHoverMove != grabBarHoverMove_ || grabBarHoverClose != grabBarHoverClose_) {
+            grabBarHoverMove_ = grabBarHoverMove;
+            grabBarHoverClose_ = grabBarHoverClose;
+            applyGrabBarTexture(grabBarHoverMove_, grabBarHoverClose_);
+        }
+        const MouseGrabBarGeometry bar = computeMouseGrabBarGeometry(
+            screenPose,
+            clampedWidth,
+            std::max(heightM, 0.25f),
+            clampedCurv);
+        const vr::HmdMatrix34_t barMat = toOvr(bar.pose);
+        overlay->SetOverlayWidthInMeters(mouseGrabBarOverlayHandle_, bar.widthM);
+        overlay->SetOverlayCurvature(mouseGrabBarOverlayHandle_, bar.curvature);
+        overlay->SetOverlayTransformAbsolute(
+            mouseGrabBarOverlayHandle_,
+            vr::TrackingUniverseStanding,
+            &barMat);
+        overlay->ShowOverlay(mouseGrabBarOverlayHandle_);
+    }
+
     if (mouseCursorOverlayHandle_ != 0) {
         if (!cursorVisible) {
             overlay->HideOverlay(mouseCursorOverlayHandle_);
         } else {
-            Mat34 cursorPose = screenPose;
-            cursorPose.m[0][3] = cursorWorldPoint.x + screenPose.m[0][2] * 0.002f;
-            cursorPose.m[1][3] = cursorWorldPoint.y + screenPose.m[1][2] * 0.002f;
-            cursorPose.m[2][3] = cursorWorldPoint.z + screenPose.m[2][2] * 0.002f;
+            Mat34 cursorPose = cursorWorldPose;
+            cursorPose.m[0][3] += cursorWorldPose.m[0][2] * 0.002f;
+            cursorPose.m[1][3] += cursorWorldPose.m[1][2] * 0.002f;
+            cursorPose.m[2][3] += cursorWorldPose.m[2][2] * 0.002f;
             const vr::HmdMatrix34_t mat = toOvr(cursorPose);
             overlay->SetOverlayWidthInMeters(mouseCursorOverlayHandle_, cursorPressed ? 0.036f : 0.048f);
             overlay->SetOverlayAlpha(mouseCursorOverlayHandle_, 0.98f);

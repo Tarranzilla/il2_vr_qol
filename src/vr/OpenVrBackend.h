@@ -74,9 +74,12 @@ public:
         const Mat34& screenPose,
         float widthM,
         float heightM,
+        float curvature,
         bool cursorVisible,
-        const Vec3& cursorWorldPoint,
-        bool cursorPressed);
+        const Mat34& cursorWorldPose,
+        bool cursorPressed,
+        bool grabBarHoverMove = false,
+        bool grabBarHoverClose = false);
 
 private:
     void createHudOverlay();
@@ -87,6 +90,7 @@ private:
     void destroyGizmoOverlays();
     void createMouseOverlays();
     void destroyMouseOverlays();
+    void applyGrabBarTexture(bool hoverMove, bool hoverClose);
     void applyHudTransform();
 
     vr::IVRSystem* system_ = nullptr;
@@ -99,6 +103,9 @@ private:
     uint64_t throttleAnchorOverlayHandle_ = 0;
     uint64_t mouseScreenOverlayHandle_ = 0;
     uint64_t mouseCursorOverlayHandle_ = 0;
+    uint64_t mouseGrabBarOverlayHandle_ = 0;
+    bool grabBarHoverMove_ = false;
+    bool grabBarHoverClose_ = false;
     bool overlayVisible_ = true;
     bool hudAnchored_ = false;
     Mat34 hudSeatedPose_ = Mat34::identity();

@@ -396,4 +396,177 @@ float computeAnchoredThrottleInput(
     return computeVtolThrottleInput(0.50f, anchorPos, currentPos, referenceYawDeg, cfg);
 }
 
+Mat34 makeUprightPose(const Mat34& pose) noexcept {
+    const Vec3 pos{pose.m[0][3], pose.m[1][3], pose.m[2][3]};
+    return makeHorizontalPose(pos, extractYawDeg(pose));
+}
+
+Mat34 composeScreenPose(
+    const Vec3& center,
+    float yawDeg,
+    float pitchDeg,
+    bool lockUpright) noexcept {
+    const Mat34 base = makeHorizontalPose(center, yawDeg);
+    if (lockUpright || std::fabs(pitchDeg) < 1e-4f) {
+        return base;
+    }
+    const float rad = pitchDeg * kDegToRad;
+    const float c = std::cos(rad);
+    const float s = std::sin(rad);
+    Mat34 pitchX{};
+    pitchX.m[0][0] = 1.0f;
+    pitchX.m[1][1] = c;
+    pitchX.m[1][2] = -s;
+    pitchX.m[2][1] = s;
+    pitchX.m[2][2] = c;
+    return multiply(base, pitchX);
+}
+
+Mat34 curvedScreenPoseAt(
+    const Mat34& screenPose,
+    float widthM,
+    float heightM,
+    float curvature,
+    float u,
+    float v) noexcept {
+    const float localY = (0.5f - v) * heightM;
+    Mat34 localPose{};
+    if (curvature < 0.001f || widthM <= 1e-4f) {
+        localPose.m[0][0] = 1.0f;
+        localPose.m[1][1] = 1.0f;
+        localPose.m[2][2] = 1.0f;
+        localPose.m[0][3] = (u - 0.5f) * widthM;
+        localPose.m[1][3] = localY;
+        localPose.m[2][3] = 0.0f;
+        return multiply(screenPose, localPose);
+    }
+
+    const float c = std::clamp(curvature, 0.001f, 0.95f);
+    const float radius = widthM / (2.0f * kPi * c);
+    const float theta = (u - 0.5f) * (2.0f * kPi * c);
+    const float sinT = std::sin(theta);
+    const float cosT = std::cos(theta);
+
+    localPose.m[0][0] = cosT;
+    localPose.m[0][2] = -sinT;
+    localPose.m[1][1] = 1.0f;
+    localPose.m[2][0] = sinT;
+    localPose.m[2][2] = cosT;
+    localPose.m[0][3] = radius * sinT;
+    localPose.m[1][3] = localY;
+    localPose.m[2][3] = radius * (1.0f - cosT);
+    return multiply(screenPose, localPose);
+}
+
+std::optional<HudQuadHit> intersectRayCurvedScreen(
+    const Ray& ray,
+    const Mat34& screenPose,
+    float widthM,
+    float heightM,
+    float curvature,
+    float marginUV) noexcept {
+    if (widthM <= 0.0f || heightM <= 0.0f) {
+        return std::nullopt;
+    }
+
+    if (curvature < 0.001f) {
+        const Vec3 center{screenPose.m[0][3], screenPose.m[1][3], screenPose.m[2][3]};
+        const Vec3 axisX{screenPose.m[0][0], screenPose.m[1][0], screenPose.m[2][0]};
+        const Vec3 axisY{screenPose.m[0][1], screenPose.m[1][1], screenPose.m[2][1]};
+        const Vec3 axisZ{screenPose.m[0][2], screenPose.m[1][2], screenPose.m[2][2]};
+
+        const float denom = dot(ray.dir, axisZ);
+        if (std::fabs(denom) < 1e-6f) {
+            return std::nullopt;
+        }
+        const float t = dot(sub(center, ray.origin), axisZ) / denom;
+        if (t <= 0.05f || t > 5.0f) {
+            return std::nullopt;
+        }
+        const Vec3 hitPoint{
+            ray.origin.x + ray.dir.x * t,
+            ray.origin.y + ray.dir.y * t,
+            ray.origin.z + ray.dir.z * t
+        };
+        const Vec3 rel = sub(hitPoint, center);
+        const float localX = dot(rel, axisX);
+        const float localY = dot(rel, axisY);
+        const float u = (localX / widthM) + 0.5f;
+        const float v = 0.5f - (localY / heightM);
+        if (u < -marginUV || u > 1.0f + marginUV || v < -marginUV || v > 1.0f + marginUV) {
+            return std::nullopt;
+        }
+        const float uClamped = std::clamp(u, 0.0f, 1.0f);
+        const float vClamped = std::clamp(v, 0.0f, 1.0f);
+        const Mat34 ptPose = curvedScreenPoseAt(screenPose, widthM, heightM, 0.0f, uClamped, vClamped);
+        return HudQuadHit{uClamped, vClamped, t, {ptPose.m[0][3], ptPose.m[1][3], ptPose.m[2][3]}};
+    }
+
+    const float c = std::clamp(curvature, 0.001f, 0.95f);
+    const float radius = widthM / (2.0f * kPi * c);
+    const Mat34 inv = invertRigid(screenPose);
+    const Vec3 oLocal = transformPoint(inv, ray.origin);
+    const Vec3 dLocal = transformDirection(inv, ray.dir);
+
+    const float ox = oLocal.x;
+    const float oz = oLocal.z - radius;
+    const float dx = dLocal.x;
+    const float dz = dLocal.z;
+    const float a = dx * dx + dz * dz;
+    if (a < 1e-8f) {
+        return std::nullopt;
+    }
+
+    const float halfB = ox * dx + oz * dz;
+    const float cTerm = ox * ox + oz * oz - radius * radius;
+    const float disc = halfB * halfB - a * cTerm;
+    if (disc < 0.0f) {
+        return std::nullopt;
+    }
+
+    const float sqrtDisc = std::sqrt(disc);
+    const float tCands[2] = {
+        (-halfB - sqrtDisc) / a,
+        (-halfB + sqrtDisc) / a
+    };
+
+    const float totalArcRad = 2.0f * kPi * c;
+    for (float t : tCands) {
+        if (t <= 0.05f || t > 5.0f) {
+            continue;
+        }
+        const float hx = oLocal.x + dLocal.x * t;
+        const float hy = oLocal.y + dLocal.y * t;
+        const float hz = oLocal.z + dLocal.z * t;
+        const float theta = std::atan2(hx, radius - hz);
+        const float u = 0.5f + (theta / totalArcRad);
+        const float v = 0.5f - (hy / heightM);
+        if (u >= -marginUV && u <= 1.0f + marginUV && v >= -marginUV && v <= 1.0f + marginUV) {
+            const float uClamped = std::clamp(u, 0.0f, 1.0f);
+            const float vClamped = std::clamp(v, 0.0f, 1.0f);
+            const Mat34 ptPose = curvedScreenPoseAt(screenPose, widthM, heightM, c, uClamped, vClamped);
+            return HudQuadHit{uClamped, vClamped, t, {ptPose.m[0][3], ptPose.m[1][3], ptPose.m[2][3]}};
+        }
+    }
+    return std::nullopt;
+}
+
+MouseGrabBarGeometry computeMouseGrabBarGeometry(
+    const Mat34& screenPose,
+    float screenWidthM,
+    float screenHeightM,
+    float screenCurvature) noexcept {
+    MouseGrabBarGeometry out{};
+    out.widthM = std::clamp(screenWidthM * 0.52f, 0.36f, 1.05f);
+    out.heightM = out.widthM * (40.0f / 256.0f);
+    out.curvature = (screenCurvature >= 0.001f && screenWidthM > 1e-4f)
+        ? (screenCurvature * (out.widthM / screenWidthM))
+        : 0.0f;
+    constexpr float kGapM = 0.024f;
+    Mat34 offset = Mat34::identity();
+    offset.m[1][3] = -(screenHeightM * 0.5f) - kGapM - (out.heightM * 0.5f);
+    out.pose = multiply(screenPose, offset);
+    return out;
+}
+
 } // namespace il2vr

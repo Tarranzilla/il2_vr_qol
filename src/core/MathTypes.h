@@ -147,6 +147,42 @@ struct EulerAnglesDeg {
 
 EulerAnglesDeg extractEulerAnglesDeg(const Mat34& m) noexcept;
 
+Mat34 makeUprightPose(const Mat34& pose) noexcept;
+Mat34 composeScreenPose(
+    const Vec3& center,
+    float yawDeg,
+    float pitchDeg,
+    bool lockUpright) noexcept;
+
+std::optional<HudQuadHit> intersectRayCurvedScreen(
+    const Ray& ray,
+    const Mat34& screenPose,
+    float widthM,
+    float heightM,
+    float curvature,
+    float marginUV = 0.0f) noexcept;
+
+Mat34 curvedScreenPoseAt(
+    const Mat34& screenPose,
+    float widthM,
+    float heightM,
+    float curvature,
+    float u,
+    float v) noexcept;
+
+struct MouseGrabBarGeometry {
+    Mat34 pose = Mat34::identity();
+    float widthM = 0.65f;
+    float heightM = 0.65f * (40.0f / 256.0f);
+    float curvature = 0.0f;
+};
+
+MouseGrabBarGeometry computeMouseGrabBarGeometry(
+    const Mat34& screenPose,
+    float screenWidthM,
+    float screenHeightM,
+    float screenCurvature) noexcept;
+
 enum class ControlStickMode : int {
     Free = 0,
     Anchored = 1

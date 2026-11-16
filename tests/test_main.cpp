@@ -385,3 +385,55 @@ TEST_CASE("LocaleManager loads pt-BR and en-US with 100% key parity", "[i18n]") 
     CHECK_FALSE(ptKeys.empty());
     CHECK(ptKeys == enKeys);
 }
+
+TEST_CASE("Curved virtual mouse screen intersection and upright alignment", "[math][mouse]") {
+    const il2vr::Vec3 center{0.1f, 1.0f, -0.85f};
+    const il2vr::Mat34 tilted = il2vr::composeScreenPose(center, 15.0f, -18.0f, false);
+    const il2vr::EulerAnglesDeg tiltedAng = il2vr::extractEulerAnglesDeg(tilted);
+    CHECK(tiltedAng.yawDeg == Approx(15.0f).margin(1e-2f));
+    CHECK(tiltedAng.pitchDeg == Approx(-18.0f).margin(1e-2f));
+
+    const il2vr::Mat34 upright = il2vr::makeUprightPose(tilted);
+    const il2vr::EulerAnglesDeg upAng = il2vr::extractEulerAnglesDeg(upright);
+    CHECK(upAng.yawDeg == Approx(15.0f).margin(1e-2f));
+    CHECK(upAng.pitchDeg == Approx(0.0f).margin(1e-3f));
+    CHECK(upAng.rollDeg == Approx(0.0f).margin(1e-3f));
+    CHECK(upright.m[0][3] == Approx(center.x).margin(1e-4f));
+    CHECK(upright.m[1][3] == Approx(center.y).margin(1e-4f));
+    CHECK(upright.m[2][3] == Approx(center.z).margin(1e-4f));
+
+    const il2vr::Mat34 flatPose = il2vr::makeHorizontalPose({0.0f, 1.0f, -1.0f}, 0.0f);
+    const il2vr::Ray rayCenter{{0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, -1.0f}};
+    const auto hitFlat = il2vr::intersectRayCurvedScreen(rayCenter, flatPose, 1.60f, 0.90f, 0.0f, 0.0f);
+    const auto hitQuad = il2vr::intersectRayHudQuad(rayCenter, flatPose, 1.60f, 0.90f);
+    REQUIRE(hitFlat.has_value());
+    REQUIRE(hitQuad.has_value());
+    CHECK(hitFlat->u == Approx(hitQuad->u).margin(1e-4f));
+    CHECK(hitFlat->v == Approx(hitQuad->v).margin(1e-4f));
+
+    const float curvature = 0.25f;
+    const auto hitCurvedCenter = il2vr::intersectRayCurvedScreen(rayCenter, flatPose, 1.60f, 0.90f, curvature, 0.0f);
+    REQUIRE(hitCurvedCenter.has_value());
+    CHECK(hitCurvedCenter->u == Approx(0.5f).margin(1e-4f));
+    CHECK(hitCurvedCenter->v == Approx(0.5f).margin(1e-4f));
+    CHECK(hitCurvedCenter->worldPoint.z == Approx(-1.0f).margin(1e-4f));
+
+    // Ray aimed at right border of curved cylinder (theta = +pi * curvature).
+    constexpr float kPi = 3.14159265358979323846f;
+    const float radius = 1.60f / (2.0f * kPi * curvature);
+    const float thetaEdge = kPi * curvature;
+    const float edgeX = radius * std::sin(thetaEdge);
+    const float edgeZ = -1.0f + radius * (1.0f - std::cos(thetaEdge));
+    const float len = std::sqrt(edgeX * edgeX + edgeZ * edgeZ);
+    const il2vr::Ray rayEdge{{0.0f, 1.0f, 0.0f}, {edgeX / len, 0.0f, edgeZ / len}};
+    const auto hitEdge = il2vr::intersectRayCurvedScreen(rayEdge, flatPose, 1.60f, 0.90f, curvature, 0.0f);
+    REQUIRE(hitEdge.has_value());
+    CHECK(hitEdge->u == Approx(1.0f).margin(1e-3f));
+    CHECK(hitEdge->worldPoint.x == Approx(edgeX).margin(1e-3f));
+    CHECK(hitEdge->worldPoint.z == Approx(edgeZ).margin(1e-3f));
+
+    // Grab Bar geometry scales curvature proportionally so both share cylinder radius.
+    const il2vr::MouseGrabBarGeometry bar = il2vr::computeMouseGrabBarGeometry(flatPose, 1.60f, 0.90f, curvature);
+    CHECK(bar.pose.m[1][3] < flatPose.m[1][3] - 0.45f);
+    CHECK(bar.curvature == Approx(curvature * (bar.widthM / 1.60f)).margin(1e-4f));
+}

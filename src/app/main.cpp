@@ -54,6 +54,12 @@ struct AppSettings {
     float vrMouseScreenWidthM = 1.30f;
     bool vrMouseScreenCustomPlaced = false;
     il2vr::Mat34 vrMouseScreenPose = il2vr::makeHorizontalPose({0.0f, 1.0f, -0.85f}, 0.0f);
+    float vrMouseScreenCurvature = 0.0f;
+    bool vrMouseScreenLockUpright = true;
+    int vrMouseScreenYawMode = 0;
+    float vrMouseScreenManualYawDeg = 0.0f;
+    float vrMouseScreenPitchDeg = 0.0f;
+    bool vrMouseFreeGripDrag = false;
 };
 
 std::filesystem::path resolveConfigDir(const std::filesystem::path& localesDir) {
@@ -112,6 +118,12 @@ AppSettings loadAppSettings(const std::filesystem::path& path) {
             if (j.contains("vrMouseScreenPose")) {
                 jsonToMat34(j["vrMouseScreenPose"], s.vrMouseScreenPose);
             }
+            s.vrMouseScreenCurvature = std::clamp(j.value("vrMouseScreenCurvature", s.vrMouseScreenCurvature), 0.0f, 0.35f);
+            s.vrMouseScreenLockUpright = j.value("vrMouseScreenLockUpright", s.vrMouseScreenLockUpright);
+            s.vrMouseScreenYawMode = std::clamp(j.value("vrMouseScreenYawMode", s.vrMouseScreenYawMode), 0, 2);
+            s.vrMouseScreenManualYawDeg = std::clamp(j.value("vrMouseScreenManualYawDeg", s.vrMouseScreenManualYawDeg), -180.0f, 180.0f);
+            s.vrMouseScreenPitchDeg = std::clamp(j.value("vrMouseScreenPitchDeg", s.vrMouseScreenPitchDeg), -30.0f, 30.0f);
+            s.vrMouseFreeGripDrag = j.value("vrMouseFreeGripDrag", s.vrMouseFreeGripDrag);
         }
     } catch (...) {
     }
@@ -137,7 +149,13 @@ bool saveAppSettings(const std::filesystem::path& path, const AppSettings& s) {
         {"vrMouseScreenDistM", s.vrMouseScreenDistM},
         {"vrMouseScreenWidthM", s.vrMouseScreenWidthM},
         {"vrMouseScreenCustomPlaced", s.vrMouseScreenCustomPlaced},
-        {"vrMouseScreenPose", mat34ToJson(s.vrMouseScreenPose)}
+        {"vrMouseScreenPose", mat34ToJson(s.vrMouseScreenPose)},
+        {"vrMouseScreenCurvature", s.vrMouseScreenCurvature},
+        {"vrMouseScreenLockUpright", s.vrMouseScreenLockUpright},
+        {"vrMouseScreenYawMode", s.vrMouseScreenYawMode},
+        {"vrMouseScreenManualYawDeg", s.vrMouseScreenManualYawDeg},
+        {"vrMouseScreenPitchDeg", s.vrMouseScreenPitchDeg},
+        {"vrMouseFreeGripDrag", s.vrMouseFreeGripDrag}
     };
     out << j.dump(2) << '\n';
     return out.good();
@@ -1124,7 +1142,15 @@ int main(int argc, char** argv) {
     bool vrMouseScreenAnchored = appSettings.vrMouseScreenCustomPlaced;
     il2vr::Mat34 vrMouseScreenPose = appSettings.vrMouseScreenPose;
     bool vrMouseScreenGrabActive = false;
+    bool vrMouseScreenGrabFromBar = false;
     il2vr::VrHand vrMouseScreenGrabHand = il2vr::VrHand::Right;
+    bool prevGrabBarCloseDown = false;
+    float vrMouseScreenCurvature = appSettings.vrMouseScreenCurvature;
+    bool vrMouseScreenLockUpright = appSettings.vrMouseScreenLockUpright;
+    int vrMouseScreenYawMode = appSettings.vrMouseScreenYawMode;
+    float vrMouseScreenManualYawDeg = appSettings.vrMouseScreenManualYawDeg;
+    float vrMouseScreenPitchDeg = appSettings.vrMouseScreenPitchDeg;
+    bool vrMouseFreeGripDrag = appSettings.vrMouseFreeGripDrag;
     float vrMouseSensitivity = appSettings.vrMouseSensitivity;
     il2vr::OneEuroFilter vrMouseFilterU(4.5f, 0.90f, 1.0f);
     il2vr::OneEuroFilter vrMouseFilterV(4.5f, 0.90f, 1.0f);
@@ -1162,7 +1188,28 @@ int main(int argc, char** argv) {
         appSettings.vrMouseScreenWidthM = vrMouseScreenWidthM;
         appSettings.vrMouseScreenCustomPlaced = vrMouseScreenCustomPlaced;
         appSettings.vrMouseScreenPose = vrMouseScreenPose;
+        appSettings.vrMouseScreenCurvature = vrMouseScreenCurvature;
+        appSettings.vrMouseScreenLockUpright = vrMouseScreenLockUpright;
+        appSettings.vrMouseScreenYawMode = vrMouseScreenYawMode;
+        appSettings.vrMouseScreenManualYawDeg = vrMouseScreenManualYawDeg;
+        appSettings.vrMouseScreenPitchDeg = vrMouseScreenPitchDeg;
+        appSettings.vrMouseFreeGripDrag = vrMouseFreeGripDrag;
         saveAppSettings(settingsPath, appSettings);
+    };
+
+    auto applyMouseScreenAlignment = [&](const il2vr::Vec3& center, const il2vr::Mat34* optHmdPose) {
+        float yawDeg = 0.0f;
+        if (vrMouseScreenYawMode == 1 && optHmdPose != nullptr) {
+            const float dx = optHmdPose->m[0][3] - center.x;
+            const float dz = optHmdPose->m[2][3] - center.z;
+            if ((dx * dx + dz * dz) > 1e-6f) {
+                yawDeg = std::atan2(dx, dz) * (180.0f / 3.14159265358979323846f);
+            }
+        } else if (vrMouseScreenYawMode == 2) {
+            yawDeg = vrMouseScreenManualYawDeg;
+        }
+        const float pitchDeg = vrMouseScreenLockUpright ? 0.0f : vrMouseScreenPitchDeg;
+        vrMouseScreenPose = il2vr::composeScreenPose(center, yawDeg, pitchDeg, vrMouseScreenLockUpright);
     };
 
     auto anchorVrMouseScreenToHead = [&](const il2vr::Mat34& hmdPose) {
@@ -1172,7 +1219,7 @@ int main(int argc, char** argv) {
             eye.y - 0.02f,
             eye.z - vrMouseScreenDistM
         };
-        vrMouseScreenPose = il2vr::makeHorizontalPose(center, 0.0f);
+        applyMouseScreenAlignment(center, &hmdPose);
         vrMouseScreenAnchored = true;
     };
 
@@ -1182,6 +1229,8 @@ int main(int argc, char** argv) {
         vrMouseSubPixelX = 0.0f;
         vrMouseSubPixelY = 0.0f;
         vrMouseScreenGrabActive = false;
+        vrMouseScreenGrabFromBar = false;
+        prevGrabBarCloseDown = false;
         vrMouseFilterU.reset();
         vrMouseFilterV.reset();
         if (vrMouseMode) {
@@ -1946,8 +1995,10 @@ int main(int argc, char** argv) {
                 anchorVrMouseScreenToHead(vrState.hmdSeatedPose);
             }
             bool mouseCursorVisible = false;
-            il2vr::Vec3 mouseCursorWorldPoint{};
+            il2vr::Mat34 mouseCursorWorldPose = il2vr::Mat34::identity();
             bool mouseCursorPressed = false;
+            bool grabBarHoverMove = false;
+            bool grabBarHoverClose = false;
 
             const bool anyGrabActive = spaceDragActive || vtolStickGrabbed || vtolThrottleGrabbed
                 || anchorStickGrabbed || anchorThrottleGrabbed;
@@ -2051,18 +2102,30 @@ int main(int argc, char** argv) {
                     }
                     prevRayClickDown = false;
 
+                    const il2vr::MouseGrabBarGeometry barGeo = il2vr::computeMouseGrabBarGeometry(
+                        vrMouseScreenPose,
+                        vrMouseScreenWidthM,
+                        vrMouseScreenHeightM,
+                        vrMouseScreenCurvature);
+
                     const bool leftGripHold = vrState.left.valid && vrState.left.grip;
                     const bool rightGripHold = vrState.right.valid && vrState.right.grip;
-                    if (vrMouseScreenGrabActive || leftGripHold || rightGripHold) {
+
+                    if (vrMouseScreenGrabActive || (vrMouseFreeGripDrag && (leftGripHold || rightGripHold))) {
                         if (!vrMouseScreenGrabActive) {
                             vrMouseScreenGrabActive = true;
+                            vrMouseScreenGrabFromBar = false;
                             vrMouseScreenGrabHand = rightGripHold ? il2vr::VrHand::Right : il2vr::VrHand::Left;
                             vr.triggerHapticPulse(vrMouseScreenGrabHand, 1600);
                         }
                         const auto& grabCtrl = (vrMouseScreenGrabHand == il2vr::VrHand::Left)
                             ? vrState.left
                             : vrState.right;
-                        if (grabCtrl.valid && grabCtrl.grip) {
+                        const bool holdBtn = vrMouseScreenGrabFromBar
+                            ? (grabCtrl.valid && (grabCtrl.triggerClick || grabCtrl.grip))
+                            : (grabCtrl.valid && grabCtrl.grip);
+                        if (holdBtn) {
+                            grabBarHoverMove = vrMouseScreenGrabFromBar;
                             vrMouseScreenDistM = std::clamp(
                                 vrMouseScreenDistM + grabCtrl.joyY * 0.75f * dtSeconds,
                                 0.35f,
@@ -2073,18 +2136,23 @@ int main(int argc, char** argv) {
                                 2.60f);
                             vrMouseScreenHeightM = vrMouseScreenWidthM * (9.0f / 16.0f);
                             const il2vr::Ray ray = makeControllerRay(grabCtrl.pose, rayPitchOffsetDeg);
-                            const il2vr::Vec3 targetCenter{
+                            const il2vr::Vec3 hitTarget{
                                 ray.origin.x + ray.dir.x * vrMouseScreenDistM,
                                 ray.origin.y + ray.dir.y * vrMouseScreenDistM,
                                 ray.origin.z + ray.dir.z * vrMouseScreenDistM
                             };
-                            vrMouseScreenPose = il2vr::makeHorizontalPose(targetCenter, 0.0f);
+                            il2vr::Vec3 screenCenter = hitTarget;
+                            if (vrMouseScreenGrabFromBar) {
+                                screenCenter.y += (vrMouseScreenHeightM * 0.5f) + 0.024f + (barGeo.heightM * 0.5f);
+                            }
+                            applyMouseScreenAlignment(screenCenter, vrState.hmdValid ? &vrState.hmdSeatedPose : nullptr);
                             vrMouseScreenAnchored = true;
                             vrMouseHasPrevUV = false;
                             releaseVrMouseButtons();
-                            vr.updateLaserOverlay(true, ray.origin, targetCenter, eyePos);
+                            vr.updateLaserOverlay(true, ray.origin, hitTarget, eyePos);
                         } else {
                             vrMouseScreenGrabActive = false;
+                            vrMouseScreenGrabFromBar = false;
                             vrMouseScreenCustomPlaced = true;
                             saveCurrentSettings();
                             vr.triggerHapticPulse(vrMouseScreenGrabHand, 1000);
@@ -2092,142 +2160,153 @@ int main(int argc, char** argv) {
                             vr.updateLaserOverlay(false, {}, {}, {});
                         }
                     } else {
-                        auto intersectScreenWithMargin = [](
-                            const il2vr::Ray& ray,
-                            const il2vr::Mat34& quadPose,
-                            float widthM,
-                            float heightM) -> std::optional<il2vr::HudQuadHit> {
-                            if (widthM <= 0.0f || heightM <= 0.0f) {
-                                return std::nullopt;
-                            }
-                            const il2vr::Vec3 center{quadPose.m[0][3], quadPose.m[1][3], quadPose.m[2][3]};
-                            const il2vr::Vec3 axisX{quadPose.m[0][0], quadPose.m[1][0], quadPose.m[2][0]};
-                            const il2vr::Vec3 axisY{quadPose.m[0][1], quadPose.m[1][1], quadPose.m[2][1]};
-                            const il2vr::Vec3 axisZ{quadPose.m[0][2], quadPose.m[1][2], quadPose.m[2][2]};
-
-                            const float denom = ray.dir.x * axisZ.x + ray.dir.y * axisZ.y + ray.dir.z * axisZ.z;
-                            if (std::fabs(denom) < 1e-6f) {
-                                return std::nullopt;
-                            }
-                            const float dxC = center.x - ray.origin.x;
-                            const float dyC = center.y - ray.origin.y;
-                            const float dzC = center.z - ray.origin.z;
-                            const float t = (dxC * axisZ.x + dyC * axisZ.y + dzC * axisZ.z) / denom;
-                            if (t <= 0.05f || t > 5.0f) {
-                                return std::nullopt;
-                            }
-                            const il2vr::Vec3 hitPoint{
-                                ray.origin.x + ray.dir.x * t,
-                                ray.origin.y + ray.dir.y * t,
-                                ray.origin.z + ray.dir.z * t
-                            };
-                            const float rx = hitPoint.x - center.x;
-                            const float ry = hitPoint.y - center.y;
-                            const float rz = hitPoint.z - center.z;
-                            const float localX = rx * axisX.x + ry * axisX.y + rz * axisX.z;
-                            const float localY = rx * axisY.x + ry * axisY.y + rz * axisY.z;
-                            const float u = (localX / widthM) + 0.5f;
-                            const float v = 0.5f - (localY / heightM);
-                            if (u < -0.20f || u > 1.20f || v < -0.20f || v > 1.20f) {
-                                return std::nullopt;
-                            }
-                            const float uClamped = std::clamp(u, 0.0f, 1.0f);
-                            const float vClamped = std::clamp(v, 0.0f, 1.0f);
-                            const float clampedX = (uClamped - 0.5f) * widthM;
-                            const float clampedY = (0.5f - vClamped) * heightM;
-                            const il2vr::Vec3 clampedWorldPoint{
-                                center.x + axisX.x * clampedX + axisY.x * clampedY,
-                                center.y + axisX.y * clampedX + axisY.y * clampedY,
-                                center.z + axisX.z * clampedX + axisY.z * clampedY
-                            };
-                            return il2vr::HudQuadHit{uClamped, vClamped, t, clampedWorldPoint};
-                        };
-
-                        auto tryScreenHand = [&](il2vr::VrHand hand) -> std::optional<std::pair<il2vr::Ray, il2vr::HudQuadHit>> {
+                        auto tryGrabBarHand = [&](il2vr::VrHand hand) -> std::optional<std::pair<il2vr::Ray, il2vr::HudQuadHit>> {
                             const auto& ctrl = (hand == il2vr::VrHand::Left) ? vrState.left : vrState.right;
                             if (!ctrl.valid) {
                                 return std::nullopt;
                             }
                             const il2vr::Ray ray = makeControllerRay(ctrl.pose, rayPitchOffsetDeg);
-                            const auto hit = intersectScreenWithMargin(
-                                ray, vrMouseScreenPose, vrMouseScreenWidthM, vrMouseScreenHeightM);
+                            const auto hit = il2vr::intersectRayCurvedScreen(
+                                ray, barGeo.pose, barGeo.widthM, barGeo.heightM, barGeo.curvature, 0.0f);
                             if (!hit.has_value()) {
                                 return std::nullopt;
                             }
                             return std::make_pair(ray, *hit);
                         };
 
-                        il2vr::VrHand mouseHand = preferredRayHand;
-                        auto screenBest = tryScreenHand(preferredRayHand);
-                        if (!screenBest.has_value()) {
-                            screenBest = tryScreenHand(otherHand);
-                            if (screenBest.has_value()) {
-                                mouseHand = otherHand;
+                        il2vr::VrHand barHand = preferredRayHand;
+                        auto barBest = tryGrabBarHand(preferredRayHand);
+                        if (!barBest.has_value()) {
+                            barBest = tryGrabBarHand(otherHand);
+                            if (barBest.has_value()) {
+                                barHand = otherHand;
                                 preferredRayHand = otherHand;
                             }
                         }
 
-                        if (screenBest.has_value()) {
-                            const auto& screenHit = screenBest->second;
-                            const auto& mouseCtrl = (mouseHand == il2vr::VrHand::Left) ? vrState.left : vrState.right;
-                            focusIl2WindowIfNeeded(il2Pid, hwnd);
-
-                            const float uFilt = vrMouseFilterU.filter(screenHit.u, dtSeconds);
-                            const float vFilt = vrMouseFilterV.filter(screenHit.v, dtSeconds);
-                            const bool isFirstHit = !vrMouseHasPrevUV || prevVrMouseHand != mouseHand;
-                            if (isFirstHit) {
-                                prevVrMouseU = uFilt;
-                                prevVrMouseV = vFilt;
-                                prevVrMouseHand = mouseHand;
-                                vrMouseHasPrevUV = true;
-                                vrMouseSubPixelX = 0.0f;
-                                vrMouseSubPixelY = 0.0f;
-                            }
-
-                            vrMouseSubPixelX += (uFilt - prevVrMouseU) * (1050.0f * vrMouseSensitivity);
-                            vrMouseSubPixelY += (vFilt - prevVrMouseV) * (620.0f * vrMouseSensitivity);
-                            prevVrMouseU = uFilt;
-                            prevVrMouseV = vFilt;
-
-                            const int dx = std::clamp(static_cast<int>(std::trunc(vrMouseSubPixelX)), -120, 120);
-                            const int dy = std::clamp(static_cast<int>(std::trunc(vrMouseSubPixelY)), -120, 120);
-                            if (dx != 0 || dy != 0) {
-                                il2vr::KeyboardInjector::sendMouseMoveRelative(dx, dy);
-                                vrMouseSubPixelX -= static_cast<float>(dx);
-                                vrMouseSubPixelY -= static_cast<float>(dy);
-                            }
-
-                            const bool leftDown = (vrState.right.valid && vrState.right.triggerClick)
-                                || (vrState.left.valid && vrState.left.triggerClick);
-                            const bool rightDown = (vrState.right.valid && vrState.right.primaryBtn);
-                            if (leftDown != prevVrMouseLeft) {
-                                il2vr::KeyboardInjector::sendMouseButton(true, leftDown);
-                                vr.triggerHapticPulse(mouseHand, leftDown ? 1200 : 700);
-                                prevVrMouseLeft = leftDown;
-                            }
-                            if (rightDown != prevVrMouseRight) {
-                                il2vr::KeyboardInjector::sendMouseButton(false, rightDown);
-                                vr.triggerHapticPulse(mouseHand, rightDown ? 1200 : 700);
-                                prevVrMouseRight = rightDown;
-                            }
-                            if (mouseCtrl.valid && std::abs(mouseCtrl.joyY) > 0.35f) {
-                                vrMouseScrollAccum += mouseCtrl.joyY * dtSeconds * 6.0f;
-                                const int steps = static_cast<int>(vrMouseScrollAccum);
-                                if (steps != 0) {
-                                    il2vr::KeyboardInjector::sendMouseWheel(steps * 120);
-                                    vrMouseScrollAccum -= static_cast<float>(steps);
-                                }
-                            } else {
-                                vrMouseScrollAccum = 0.0f;
-                            }
-                            mouseCursorVisible = true;
-                            mouseCursorWorldPoint = screenHit.worldPoint;
-                            mouseCursorPressed = (leftDown || rightDown);
-                            vr.updateLaserOverlay(true, screenBest->first.origin, screenHit.worldPoint, eyePos);
-                        } else {
+                        if (barBest.has_value()) {
+                            const auto& barHit = barBest->second;
+                            const auto& barCtrl = (barHand == il2vr::VrHand::Left) ? vrState.left : vrState.right;
                             vrMouseHasPrevUV = false;
                             releaseVrMouseButtons();
-                            vr.updateLaserOverlay(false, {}, {}, {});
+                            if (barHit.u > 0.80f) {
+                                grabBarHoverClose = true;
+                                if (barCtrl.valid && barCtrl.triggerClick && !prevGrabBarCloseDown) {
+                                    vr.triggerHapticPulse(barHand, 2000);
+                                    setVrMouseMode(false, false, "GrabBarClose");
+                                }
+                                prevGrabBarCloseDown = barCtrl.valid && barCtrl.triggerClick;
+                            } else {
+                                grabBarHoverMove = true;
+                                prevGrabBarCloseDown = false;
+                                if (barCtrl.valid && (barCtrl.triggerClick || barCtrl.grip)) {
+                                    vrMouseScreenGrabActive = true;
+                                    vrMouseScreenGrabFromBar = true;
+                                    vrMouseScreenGrabHand = barHand;
+                                    vrMouseScreenDistM = std::clamp(barHit.distance, 0.35f, 2.20f);
+                                    vr.triggerHapticPulse(barHand, 1700);
+                                }
+                            }
+                            vr.updateLaserOverlay(true, barBest->first.origin, barHit.worldPoint, eyePos);
+                        } else {
+                            prevGrabBarCloseDown = false;
+                            auto tryScreenHand = [&](il2vr::VrHand hand) -> std::optional<std::pair<il2vr::Ray, il2vr::HudQuadHit>> {
+                                const auto& ctrl = (hand == il2vr::VrHand::Left) ? vrState.left : vrState.right;
+                                if (!ctrl.valid) {
+                                    return std::nullopt;
+                                }
+                                const il2vr::Ray ray = makeControllerRay(ctrl.pose, rayPitchOffsetDeg);
+                                const auto hit = il2vr::intersectRayCurvedScreen(
+                                    ray,
+                                    vrMouseScreenPose,
+                                    vrMouseScreenWidthM,
+                                    vrMouseScreenHeightM,
+                                    vrMouseScreenCurvature,
+                                    0.20f);
+                                if (!hit.has_value()) {
+                                    return std::nullopt;
+                                }
+                                return std::make_pair(ray, *hit);
+                            };
+
+                            il2vr::VrHand mouseHand = preferredRayHand;
+                            auto screenBest = tryScreenHand(preferredRayHand);
+                            if (!screenBest.has_value()) {
+                                screenBest = tryScreenHand(otherHand);
+                                if (screenBest.has_value()) {
+                                    mouseHand = otherHand;
+                                    preferredRayHand = otherHand;
+                                }
+                            }
+
+                            if (screenBest.has_value()) {
+                                const auto& screenHit = screenBest->second;
+                                const auto& mouseCtrl = (mouseHand == il2vr::VrHand::Left) ? vrState.left : vrState.right;
+                                focusIl2WindowIfNeeded(il2Pid, hwnd);
+
+                                const float uFilt = vrMouseFilterU.filter(screenHit.u, dtSeconds);
+                                const float vFilt = vrMouseFilterV.filter(screenHit.v, dtSeconds);
+                                const bool isFirstHit = !vrMouseHasPrevUV || prevVrMouseHand != mouseHand;
+                                if (isFirstHit) {
+                                    prevVrMouseU = uFilt;
+                                    prevVrMouseV = vFilt;
+                                    prevVrMouseHand = mouseHand;
+                                    vrMouseHasPrevUV = true;
+                                    vrMouseSubPixelX = 0.0f;
+                                    vrMouseSubPixelY = 0.0f;
+                                }
+
+                                vrMouseSubPixelX += (uFilt - prevVrMouseU) * (1050.0f * vrMouseSensitivity);
+                                vrMouseSubPixelY += (vFilt - prevVrMouseV) * (620.0f * vrMouseSensitivity);
+                                prevVrMouseU = uFilt;
+                                prevVrMouseV = vFilt;
+
+                                const int dx = std::clamp(static_cast<int>(std::trunc(vrMouseSubPixelX)), -120, 120);
+                                const int dy = std::clamp(static_cast<int>(std::trunc(vrMouseSubPixelY)), -120, 120);
+                                if (dx != 0 || dy != 0) {
+                                    il2vr::KeyboardInjector::sendMouseMoveRelative(dx, dy);
+                                    vrMouseSubPixelX -= static_cast<float>(dx);
+                                    vrMouseSubPixelY -= static_cast<float>(dy);
+                                }
+
+                                const bool leftDown = (vrState.right.valid && vrState.right.triggerClick)
+                                    || (vrState.left.valid && vrState.left.triggerClick);
+                                const bool rightDown = (vrState.right.valid && vrState.right.primaryBtn);
+                                if (leftDown != prevVrMouseLeft) {
+                                    il2vr::KeyboardInjector::sendMouseButton(true, leftDown);
+                                    vr.triggerHapticPulse(mouseHand, leftDown ? 1200 : 700);
+                                    prevVrMouseLeft = leftDown;
+                                }
+                                if (rightDown != prevVrMouseRight) {
+                                    il2vr::KeyboardInjector::sendMouseButton(false, rightDown);
+                                    vr.triggerHapticPulse(mouseHand, rightDown ? 1200 : 700);
+                                    prevVrMouseRight = rightDown;
+                                }
+                                if (mouseCtrl.valid && std::abs(mouseCtrl.joyY) > 0.35f) {
+                                    vrMouseScrollAccum += mouseCtrl.joyY * dtSeconds * 6.0f;
+                                    const int steps = static_cast<int>(vrMouseScrollAccum);
+                                    if (steps != 0) {
+                                        il2vr::KeyboardInjector::sendMouseWheel(steps * 120);
+                                        vrMouseScrollAccum -= static_cast<float>(steps);
+                                    }
+                                } else {
+                                    vrMouseScrollAccum = 0.0f;
+                                }
+                                mouseCursorVisible = true;
+                                mouseCursorWorldPose = il2vr::curvedScreenPoseAt(
+                                    vrMouseScreenPose,
+                                    vrMouseScreenWidthM,
+                                    vrMouseScreenHeightM,
+                                    vrMouseScreenCurvature,
+                                    screenHit.u,
+                                    screenHit.v);
+                                mouseCursorPressed = (leftDown || rightDown);
+                                vr.updateLaserOverlay(true, screenBest->first.origin, screenHit.worldPoint, eyePos);
+                            } else {
+                                vrMouseHasPrevUV = false;
+                                releaseVrMouseButtons();
+                                vr.updateLaserOverlay(false, {}, {}, {});
+                            }
                         }
                     }
                 } else {
@@ -2252,9 +2331,12 @@ int main(int argc, char** argv) {
                 vrMouseScreenPose,
                 vrMouseScreenWidthM,
                 vrMouseScreenHeightM,
+                vrMouseScreenCurvature,
                 mouseCursorVisible,
-                mouseCursorWorldPoint,
-                mouseCursorPressed);
+                mouseCursorWorldPose,
+                mouseCursorPressed,
+                grabBarHoverMove,
+                grabBarHoverClose);
             vrHudWasHit = vrHudHit.has_value();
 
             if (autoBindAxis == AutoBindAxis::None && !originGrabModeEnabled && !anchorEditMode
@@ -2272,7 +2354,17 @@ int main(int argc, char** argv) {
                 vjoy.setButton(3, false);
             }
         } else {
-            vr.updateMouseScreenOverlays(false, vrMouseScreenPose, vrMouseScreenWidthM, vrMouseScreenHeightM, false, {}, false);
+            vr.updateMouseScreenOverlays(
+                false,
+                vrMouseScreenPose,
+                vrMouseScreenWidthM,
+                vrMouseScreenHeightM,
+                vrMouseScreenCurvature,
+                false,
+                il2vr::Mat34::identity(),
+                false,
+                false,
+                false);
             if (prevVrMouseLeft) {
                 il2vr::KeyboardInjector::sendMouseButton(true, false);
                 prevVrMouseLeft = false;
@@ -2711,9 +2803,13 @@ int main(int argc, char** argv) {
                     ImGui::TextUnformatted("  R: --");
                 }
                 ImGui::Separator();
+                ImGui::TextUnformatted(locale.tr("hdr.mouse_screen", "Tela do Mouse VR"));
                 bool mouseChk = vrMouseMode;
                 if (ImGui::Checkbox(locale.tr("chk.mouse_vr", "Mouse VR nos Menus do IL-2 (Raycaster)"), &mouseChk)) {
                     setVrMouseMode(mouseChk, true, "Tab");
+                }
+                if (ImGui::Checkbox(locale.tr("chk.mouse_free_grip", "Mover tela com Grip livre"), &vrMouseFreeGripDrag)) {
+                    saveCurrentSettings();
                 }
                 if (ImGui::SliderFloat("Mouse Sens", &vrMouseSensitivity, 0.30f, 2.50f, "%.2fx")) {
                     saveCurrentSettings();
@@ -2729,15 +2825,108 @@ int main(int argc, char** argv) {
                     vrMouseScreenHeightM = vrMouseScreenWidthM * (9.0f / 16.0f);
                     saveCurrentSettings();
                 }
-                if (ImGui::Button("Resetar Tela Mouse (0 deg)")) {
+                if (ImGui::SliderFloat(locale.tr("lbl.screen_curvature", "Curvatura"), &vrMouseScreenCurvature, 0.0f, 0.35f, "%.2f")) {
+                    saveCurrentSettings();
+                }
+
+                if (ImGui::Checkbox(locale.tr("chk.screen_upright", "Travar perpendicular ao chao"), &vrMouseScreenLockUpright)) {
+                    if (vrMouseScreenLockUpright) {
+                        vrMouseScreenPitchDeg = 0.0f;
+                        vrMouseScreenPose = il2vr::makeUprightPose(vrMouseScreenPose);
+                    }
+                    saveCurrentSettings();
+                }
+
+                const il2vr::Vec3 curScrCenter{
+                    vrMouseScreenPose.m[0][3],
+                    vrMouseScreenPose.m[1][3],
+                    vrMouseScreenPose.m[2][3]
+                };
+                ImGui::TextUnformatted(locale.tr("lbl.screen_yaw_mode", "Rotacao Yaw"));
+                bool yawChanged = false;
+                yawChanged |= ImGui::RadioButton((std::string(locale.tr("opt.yaw_fixed0", "Fixo 0 deg")) + "##ym0").c_str(), &vrMouseScreenYawMode, 0);
+                ImGui::SameLine();
+                yawChanged |= ImGui::RadioButton((std::string(locale.tr("opt.yaw_face", "Virar para mim")) + "##ym1").c_str(), &vrMouseScreenYawMode, 1);
+                ImGui::SameLine();
+                yawChanged |= ImGui::RadioButton((std::string(locale.tr("opt.yaw_manual", "Manual")) + "##ym2").c_str(), &vrMouseScreenYawMode, 2);
+                if (yawChanged) {
+                    applyMouseScreenAlignment(curScrCenter, vrState.hmdValid ? &vrState.hmdSeatedPose : nullptr);
+                    vrMouseScreenCustomPlaced = true;
+                    saveCurrentSettings();
+                }
+                if (vrMouseScreenYawMode == 2) {
+                    if (ImGui::SliderFloat(locale.tr("lbl.screen_yaw_deg", "Yaw (deg)"), &vrMouseScreenManualYawDeg, -180.0f, 180.0f, "%.1f deg")) {
+                        applyMouseScreenAlignment(curScrCenter, nullptr);
+                        vrMouseScreenCustomPlaced = true;
+                        saveCurrentSettings();
+                    }
+                }
+
+                ImGui::BeginDisabled(vrMouseScreenLockUpright);
+                if (ImGui::SliderFloat(locale.tr("lbl.screen_pitch_deg", "Inclinacao Pitch"), &vrMouseScreenPitchDeg, -30.0f, 30.0f, "%.1f deg")) {
+                    applyMouseScreenAlignment(curScrCenter, vrState.hmdValid ? &vrState.hmdSeatedPose : nullptr);
+                    vrMouseScreenCustomPlaced = true;
+                    saveCurrentSettings();
+                }
+                ImGui::EndDisabled();
+
+                // Fine 1cm / 1 deg adjustments for exact placement over IL-2 menus.
+                auto nudgeScreenAxis = [&](int axisIdx, float deltaM) {
+                    vrMouseScreenPose.m[axisIdx][3] += deltaM;
+                    vrMouseScreenCustomPlaced = true;
+                    vrMouseScreenAnchored = true;
+                    saveCurrentSettings();
+                };
+                if (ImGui::SmallButton("X-")) { nudgeScreenAxis(0, -0.01f); }
+                ImGui::SameLine();
+                if (ImGui::SmallButton("X+")) { nudgeScreenAxis(0, 0.01f); }
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Y-")) { nudgeScreenAxis(1, -0.01f); }
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Y+")) { nudgeScreenAxis(1, 0.01f); }
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Z-")) { nudgeScreenAxis(2, -0.01f); }
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Z+")) { nudgeScreenAxis(2, 0.01f); }
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Yaw-")) {
+                    vrMouseScreenYawMode = 2;
+                    vrMouseScreenManualYawDeg = std::clamp(il2vr::extractYawDeg(vrMouseScreenPose) - 1.0f, -180.0f, 180.0f);
+                    applyMouseScreenAlignment(curScrCenter, nullptr);
+                    vrMouseScreenCustomPlaced = true;
+                    saveCurrentSettings();
+                }
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Yaw+")) {
+                    vrMouseScreenYawMode = 2;
+                    vrMouseScreenManualYawDeg = std::clamp(il2vr::extractYawDeg(vrMouseScreenPose) + 1.0f, -180.0f, 180.0f);
+                    applyMouseScreenAlignment(curScrCenter, nullptr);
+                    vrMouseScreenCustomPlaced = true;
+                    saveCurrentSettings();
+                }
+
+                if (ImGui::Button(locale.tr("btn.screen_upright_now", "Endireitar Agora"))) {
+                    vrMouseScreenLockUpright = true;
+                    vrMouseScreenPitchDeg = 0.0f;
+                    vrMouseScreenPose = il2vr::makeUprightPose(vrMouseScreenPose);
+                    vrMouseScreenCustomPlaced = true;
+                    saveCurrentSettings();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button(locale.tr("btn.screen_reset", "Resetar Tela"))) {
                     vrMouseScreenCustomPlaced = false;
                     vrMouseScreenDistM = 0.85f;
                     vrMouseScreenWidthM = 1.30f;
                     vrMouseScreenHeightM = vrMouseScreenWidthM * (9.0f / 16.0f);
+                    vrMouseScreenCurvature = 0.0f;
+                    vrMouseScreenLockUpright = true;
+                    vrMouseScreenYawMode = 0;
+                    vrMouseScreenManualYawDeg = 0.0f;
+                    vrMouseScreenPitchDeg = 0.0f;
                     vrMouseScreenAnchored = false;
                     saveCurrentSettings();
                 }
-                ImGui::TextWrapped("%s", locale.tr("lbl.mouse_hint", "Aponte para a tela do IL-2: Gatilho=Clique Esq | A=Clique Dir | Analogico Y=Scroll"));
+                ImGui::TextWrapped("%s", locale.tr("lbl.mouse_hint", "Use a barra de icones abaixo da tela para mover ou fechar [X]."));
                 ImGui::EndTabItem();
             }
 
