@@ -21,8 +21,10 @@ public:
     static bool sendKeyTap(const std::vector<std::string>& combo, int holdMs = 40);
 
     static bool sendMouseMoveNormalized(float normX0To1, float normY0To1);
+    static bool sendMouseMoveRelative(int dxPixels, int dyPixels);
     static bool sendMouseButton(bool leftButton, bool pressed);
     static bool sendMouseWheel(int wheelDelta);
+    static bool isInputDesktopAccessible() noexcept;
 };
 
 } // namespace il2vr

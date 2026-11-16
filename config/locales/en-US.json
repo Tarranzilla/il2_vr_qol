@@ -55,6 +55,9 @@
     "chk.hand_gizmo": "Show Hand 3D Arrows & Rotation Gizmo",
     "chk.anchor_markers": "Show Anchored Control Markers in Cockpit",
     "chk.mouse_vr": "VR Raycaster Mouse in IL-2 Menus",
+    "btn.mouse_vr_on": "VR MENU MOUSE: ACTIVE (Trigger=Click) [X Button]",
+    "btn.mouse_vr_off": "ENABLE VR MOUSE IN GAME MENUS [Left X Button]",
+    "warn.sandbox_sendinput": "WARNING: SendInput blocked (sandboxed process). Close and run iniciar_mod_il2_vr.bat from Windows Explorer!",
     "lbl.mouse_hint": "Point at IL-2 screen: Trigger=Left Click | A=Right Click | Stick Y=Scroll",
     "lbl.angles_title": "Hand Rotation Angles (Pitch / Roll / Yaw):",
     "lbl.lang_select": "Select HUD Language:",
@@ -63,6 +66,6 @@
     "btn.start_udp": "Start UDP Listener",
     "btn.stop_udp": "Stop UDP Listener",
     "bar.grab_hud": "=== GRAB BAR HERE (Trigger/Grip + Stick Dist.) TO MOVE HUD ===",
-    "guide.text": "Quest 3:\n  3x L3 (Left): Toggle this VR HUD\n  3x R3 (Right): Toggle Flight <-> Edit VR Origin\n  Hold R/L GRIP: 6DoF Stick / Latched Throttle\n  HUD Bottom Bar: Hold Trigger/Grip to reposition panel\n  Y Button (Left): Recenter Origin at head pose"
+    "guide.text": "Quest 3:\n  3x L3 (Left): Toggle this VR HUD\n  3x R3 (Right): Toggle Flight <-> Edit VR Origin\n  X Button (Left): Toggle VR Raycaster Mouse in IL-2 Menus\n  Hold R/L GRIP: 6DoF Stick / Latched Throttle\n  HUD Bottom Bar: Hold Trigger/Grip to reposition panel\n  Y Button (Left): Recenter Origin at head pose"
   }
 }

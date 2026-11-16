@@ -164,11 +164,38 @@ bool KeyboardInjector::sendKeyTap(const std::vector<std::string>& combo, int hol
 bool KeyboardInjector::sendMouseMoveNormalized(float normX0To1, float normY0To1) {
     const float cx = std::clamp(normX0To1, 0.0f, 1.0f);
     const float cy = std::clamp(normY0To1, 0.0f, 1.0f);
+    const int screenW = std::max(GetSystemMetrics(SM_CXSCREEN), 1);
+    const int screenH = std::max(GetSystemMetrics(SM_CYSCREEN), 1);
+    SetCursorPos(
+        static_cast<int>(std::lround(cx * static_cast<float>(screenW - 1))),
+        static_cast<int>(std::lround(cy * static_cast<float>(screenH - 1))));
+
     INPUT in{};
     in.type = INPUT_MOUSE;
     in.mi.dx = static_cast<LONG>(std::lround(cx * 65535.0f));
     in.mi.dy = static_cast<LONG>(std::lround(cy * 65535.0f));
-    in.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
+    in.mi.dwFlags = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK;
+    return SendInput(1, &in, sizeof(INPUT)) == 1;
+}
+
+bool KeyboardInjector::sendMouseMoveRelative(int dxPixels, int dyPixels) {
+    if (dxPixels == 0 && dyPixels == 0) {
+        return true;
+    }
+    INPUT in{};
+    in.type = INPUT_MOUSE;
+    in.mi.dx = static_cast<LONG>(dxPixels);
+    in.mi.dy = static_cast<LONG>(dyPixels);
+    in.mi.dwFlags = MOUSEEVENTF_MOVE;
+    return SendInput(1, &in, sizeof(INPUT)) == 1;
+}
+
+bool KeyboardInjector::isInputDesktopAccessible() noexcept {
+    INPUT in{};
+    in.type = INPUT_MOUSE;
+    in.mi.dx = 0;
+    in.mi.dy = 0;
+    in.mi.dwFlags = MOUSEEVENTF_MOVE;
     return SendInput(1, &in, sizeof(INPUT)) == 1;
 }
 

@@ -55,6 +55,9 @@
     "chk.hand_gizmo": "Mostrar Flechas & Gizmo de Rotacao das Maos (3D)",
     "chk.anchor_markers": "Mostrar Marcadores Ancorados no Cockpit",
     "chk.mouse_vr": "Mouse VR nos Menus do IL-2 (Raycaster)",
+    "btn.mouse_vr_on": "MOUSE VR NOS MENUS: ATIVO (Gatilho=Clique) [Botao X]",
+    "btn.mouse_vr_off": "ATIVAR MOUSE VR NOS MENUS DO JOGO [Botao X Esq]",
+    "warn.sandbox_sendinput": "AVISO: SendInput bloqueado (processo em sandbox). Feche e abra iniciar_mod_il2_vr.bat pelo Windows Explorer!",
     "lbl.mouse_hint": "Aponte para a tela do IL-2: Gatilho=Clique Esq | A=Clique Dir | Analogico Y=Scroll",
     "lbl.angles_title": "Angulos das Maos (Pitch / Roll / Yaw):",
     "lbl.lang_select": "Selecione o Idioma do HUD:",
@@ -63,6 +66,6 @@
     "btn.start_udp": "Iniciar Listener UDP",
     "btn.stop_udp": "Parar Listener UDP",
     "bar.grab_hud": "=== SEGURE AQUI (Gatilho/Grip + Analogico Dist.) PARA MOVER PAINEL ===",
-    "guide.text": "Quest 3:\n  3x L3 (Esq): Abrir/Fechar este HUD\n  3x R3 (Dir): Alternar Voo <-> Editar Origem 3D\n  Segurar GRIP Dir/Esq: Manche 6DoF / Manete Travada\n  Barra inferior do painel: Segurar Gatilho/Grip para mover HUD\n  Botao Y (Esq): Recentralizar Origem na cabeca"
+    "guide.text": "Quest 3:\n  3x L3 (Esq): Abrir/Fechar este HUD\n  3x R3 (Dir): Alternar Voo <-> Editar Origem 3D\n  Botao X (Esq): Ativar/Desativar Mouse VR nos Menus do IL-2\n  Segurar GRIP Dir/Esq: Manche 6DoF / Manete Travada\n  Barra inferior do painel: Segurar Gatilho/Grip para mover HUD\n  Botao Y (Esq): Recentralizar Origem na cabeca"
   }
 }
