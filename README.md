@@ -1,6 +1,6 @@
-# IL-2 VR QoL Companion (`v0.8.2`)
+# IL-2 VR QoL Companion (`v0.8.3`)
 
-![Version](https://img.shields.io/badge/version-v0.8.2-0ea5e9)
+![Version](https://img.shields.io/badge/version-v0.8.3-0ea5e9)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3%20%2B%20Commercial-blue.svg)](LICENSE)
 ![Platform](https://img.shields.io/badge/Windows-10%2F11%20x64-0078d4)
 ![VR](https://img.shields.io/badge/VR-Meta%20Quest%203%20%7C%20SteamVR%20OpenVR-6366f1)
@@ -46,7 +46,8 @@ flowchart LR
     OV --> HUD["HUD ImGui DX11<br/>Barra Agarravel + Abas"]
     OV --> P2["Pilar 2: Controles 6DoF<br/>Modo Livre / Modo Ancorado<br/>Filtro One-Euro"]
     OV --> GZ["Camada 3D<br/>Flechas + Gizmo Pitch/Roll/Yaw"]
-    OV --> MS["Mouse VR 3D<br/>Moldura + Cursor + Deltas Relativos"]
+    OV --> MS["Mouse VR 3D<br/>Tela Curva + Grab Bar + Deltas"]
+    HAP["HapticsMixer<br/>Buffet / Tiros / Motor RPM / Dano"] -->|TriggerHapticPulse| OV
 
     P1 -->|SetWorkingStandingZeroPose| SVR["SteamVR Chaperone"]
     P2 -->|Eixos X, Y, Z, Rz + Botoes 1..3| VJOY["vJoy Device 1<br/>(DirectInput Virtual HOTAS)"]
@@ -54,6 +55,7 @@ flowchart LR
     VJOY --> IL2["IL-2 Sturmovik:<br/>Great Battles"]
     WIN --> IL2
     SVR --> IL2
+    IL2 -->|UDP 29373<br/>motion + telemetrydevice| HAP
 ```
 
 ---
@@ -201,16 +203,17 @@ Você pode escolher **2 modos de operação** no Pilar 2:
 
 ---
 
-#### Háptica por Telemetria do Jogo (`v0.8.2`)
+#### Háptica por Telemetria do Jogo (`v0.8.2` / `v0.8.3`)
 *Arquivos principais: [`Il2TelemetryParser.h`](src/telemetry/Il2TelemetryParser.h), [`HapticsMixer.h`](src/haptics/HapticsMixer.h), [`il2-telemetria.md`](docs/protocolos/il2-telemetria.md)*
 
-- **Como funciona:** O companion configura automaticamente (com backup prévio `startup.cfg.bak_il2vr`) as seções `[KEY = motiondevice]` e `[KEY = telemetrydevice]` em `data/startup.cfg` (porta UDP `29373`) para receber dados em tempo real diretamente do motor do IL-2 (`50 Hz`), mantendo a prioridade dos pulsos hápticos de interface (cliques, detentes e proximidade).
+- **Como funciona:** O companion configura automaticamente (com backup prévio `startup.cfg.bak_il2vr`) as seções `[KEY = motiondevice]` e `[KEY = telemetrydevice]` em `data/startup.cfg` (porta UDP `29373`) para receber dados em tempo real diretamente do motor do IL-2 (`50 Hz`), mantendo a prioridade dos pulsos hápticos de interface (cliques, detentes e proximidade). Caso o `Il-2.exe` tenha sido aberto antes da gravação do `startup.cfg`, um aviso persistente alerta para reiniciar o jogo uma vez; há também *watchdog* automático que silencia a vibração se o jogo pausar ou voltar ao menu.
 - **Canais independentes (aba `Haptica`):**
   - **`Master`:** Liga/desliga toda a vibração vinda da telemetria + ganho geral.
-  - **`Tremor / Buffet`:** Vibração proporcional a turbulência, estol (`StallBuffet`) e variações bruscas de aceleração/solo.
+  - **`Tremor / Buffet`:** Vibração proporcional a turbulência, estol (`StallBuffet` calibrado), **rolagem na pista em decolagem/pouso** (`LandingGearPressure`), **curvas/puxadas de alto-G** e variações bruscas de aceleração.
   - **`Tiros / Armas`:** Pulso curto de recuo em cada evento `GunFired` / lançamento de bomba/foguete *(roteável para Direita/gatilho, Esquerda ou Ambas)*.
-  - **`Motor Ritmico (RPM)`:** Pulso cadenciado cuja frequência acompanha o RPM e cuja intensidade acompanha a pressão de admissão / potência *(padrão mão direita, ajustável)*.
+  - **`Motor Ritmico (RPM)`:** Pulso cadenciado cuja frequência acompanha o RPM e cuja intensidade acompanha a pressão de admissão / potência / vibração do motor *(padrão mão direita, ajustável)*.
   - **`Impactos / Dano`:** Batida curta e forte em eventos `Hit` / `Damage`.
+  - **Botões de teste rápido:** `Testar Tiro`, `Testar Tremor` *(pulso temporizado de `0,45 s`)*, `Testar Impacto` e `Parar`.
 - **Captura offline:** Use [`tools/capture_telemetry.ps1`](tools/capture_telemetry.ps1) para gravar datagramas UDP reais em `tools/captures/` para depuração.
 
 ---
@@ -250,7 +253,7 @@ Você pode escolher **2 modos de operação** no Pilar 2:
 - **6DoF Virtual Stick & Throttle (`Pillar 2`):** Uses horizontal pilot-frame projections + One-Euro adaptive filtering + deadzone/expo shaping. Choose **`Free Mode`** (center resets wherever you close Grip) or **`Anchored Mode`** (fixed 3D cockpit stick/throttle anchors with `14 cm` proximity haptic cues and **`Position Controls`** calibration submode that neutralizes flight axes while positioning anchors in `config/controls.anchors.json`). Includes single-axis **Auto-Bind** calibration sweeps (`4.2 s`) so IL-2's key-mapping wizard detects each axis cleanly without 6DoF crosstalk.
 - **3D Hand Gizmo & Euler Readout:** Toggleable OpenVR orientation arrow overlays (`Forward -Z`, `Right +X`) for both controllers and anchored cockpit controls, paired with live `Pitch / Roll / Yaw` degree readouts.
 - **DirectInput-Safe VR Menu Mouse & Curved Screen (`v0.8.1`):** Renders a `16:9` cyan 3D frame (flat or cylindrical curvature `0.00-0.35`), icon-only bottom Grab Bar (Move + `✕`), upright perpendicular floor lock, Yaw/Pitch alignment controls, and 3D tangent cursor dot, feeding smoothed pure relative `MOUSEEVENTF_MOVE` deltas without edge runaway.
-- **IL-2 Telemetry Haptics (`v0.8.2`):** Automatically configures `motiondevice` & `telemetrydevice` in `data/startup.cfg` (with `.bak_il2vr` backup) and mixes independent Quest 3 haptic channels (**Aircraft Shake/Buffet**, **Gunfire on Trigger Hand**, **Rhythmic Engine RPM/Power**, and **Impacts/Damage**) in the **Haptics** tab.
+- **IL-2 Telemetry Haptics (`v0.8.2` / `v0.8.3`):** Automatically configures `motiondevice` & `telemetrydevice` in `data/startup.cfg` (with `.bak_il2vr` backup, startup-timestamp restart detection, and pause/menu timeout watchdog) and mixes independent Quest 3 haptic channels (**Aircraft Shake/Buffet/Runway Roll/High-G**, **Gunfire on Trigger Hand**, **Rhythmic Engine RPM/Power**, and **Impacts/Damage**) in the **Haptics** tab.
 
 ---
 
