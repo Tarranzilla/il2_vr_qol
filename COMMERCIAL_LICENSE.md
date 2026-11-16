@@ -1,6 +1,6 @@
 # Commercial Licensing / Licença Comercial (`IL-2 VR QoL Companion`)
 
-**Copyright (c) 2026 Tarranzilla (`joaotarran@gmail.com`)**  
+**Copyright (c) 2026 João Tarran (Tarranzilla) — `joaotarran@gmail.com`**  
 Official Repository: https://github.com/Tarranzilla/il2_vr_qol
 
 ---
@@ -22,7 +22,7 @@ This project (**IL-2 VR QoL Companion**) is available under a **dual-licensing m
 
 If you represent a game studio, publisher, commercial hardware brand, or enterprise interested in licensing **IL-2 VR QoL Companion** (including its 6DoF virtual stick/throttle math, `TrackingUniverseStanding` SteamVR cockpit origin management, raycaster menu mouse pipeline, or i18n engine) for proprietary use or official game integration, please contact the copyright holder directly:
 
-- **Author:** Tarranzilla (João Teixeira)
+- **Author:** João Tarran (Tarranzilla)
 - **Email:** `joaotarran@gmail.com`
 - **GitHub:** https://github.com/Tarranzilla
 
@@ -41,6 +41,6 @@ O **IL-2 VR QoL Companion** adota o modelo de **Licenciamento Duplo**:
 
 Para adquirir uma licença comercial ou negociar integração oficial, entre em contato diretamente com o autor e detentor dos direitos autorais:
 
-- **Autor:** Tarranzilla (João Teixeira)
+- **Autor:** João Tarran (Tarranzilla)
 - **E-mail:** `joaotarran@gmail.com`
 - **GitHub:** https://github.com/Tarranzilla

@@ -282,7 +282,7 @@ il2_vr_qol/
 
 ## Licença & Incorporação Comercial / License & Commercial Integration
 
-**Copyright © 2026 Tarranzilla (`joaotarran@gmail.com`)**
+**Copyright © 2026 João Tarran (Tarranzilla) — `joaotarran@gmail.com`**
 
 Este projeto adota **Licenciamento Duplo (*Dual Licensing*)**:
 
@@ -290,4 +290,4 @@ Este projeto adota **Licenciamento Duplo (*Dual Licensing*)**:
 - **Licença Comercial / Proprietária ([COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md)):** Estúdios de jogos, distribuidoras ou fabricantes interessados em **integrar qualquer parte deste código em produtos fechados/comerciais** *(como integração oficial em simuladores proprietários)* sem abrir o código-fonte sob a GPLv3 precisam adquirir uma **licença comercial** com o autor (`joaotarran@gmail.com`).
 - **Contribuições & CLA ([CONTRIBUTING.md](CONTRIBUTING.md)):** Pull requests são muito bem-vindos! Ao contribuir, você mantém seus direitos autorais e autoriza a inclusão tanto na edição **GPLv3** quanto em contratos comerciais do projeto.
 
-> *Dual-licensed under **GNU GPLv3** ([LICENSE](LICENSE)) for open-source community use and a separate **Commercial License** ([COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md)) for proprietary/studio integration. Contact: **Tarranzilla** — `joaotarran@gmail.com`.*
+> *Dual-licensed under **GNU GPLv3** ([LICENSE](LICENSE)) for open-source community use and a separate **Commercial License** ([COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md)) for proprietary/studio integration. Contact: **João Tarran (Tarranzilla)** — `joaotarran@gmail.com`.*
