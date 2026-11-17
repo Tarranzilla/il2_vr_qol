@@ -17,6 +17,20 @@
 
 ---
 
+## Apoie o Desenvolvimento / Support Development
+
+[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee%20(v1%20Goal)-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/jvtarran)
+
+**PT-BR:** O **IL-2 VR QoL Companion** é 100% gratuito e de código aberto sob a licença GNU GPLv3 — sem *paywalls* ou recursos bloqueados. Levar o projeto até o marco **`v1.0`** exige dezenas de horas de engenharia em matemática 6DoF, OpenVR Overlays, filtragem de movimento, Mouse VR para DirectInput e háptica por telemetria UDP.
+- **Meta `v1.0` no Ko-fi ([ko-fi.com/jvtarran](https://ko-fi.com/jvtarran)):** Contribuições voluntárias são muito bem-vindas para ajudar a remunerar as horas dedicadas à construção da **`v1.0`**. Assim que a meta da `v1.0` for financiada, o projeto entra em um novo ciclo focado em **melhorias maiores pós-v1** e novos recursos de imersão no cockpit VR.
+- Outras formas valiosas de apoiar: deixar uma ⭐ no repositório, reportar bugs com testes em voo, sugerir traduções ou enviar *pull requests*.
+
+**EN-US:** **IL-2 VR QoL Companion** is 100% free and open source under GNU GPLv3 — with no paywalls or locked features. Bringing this companion from early prototypes to **`v1.0`** represents significant engineering time across 6DoF flight math, OpenVR overlays, DirectInput-safe VR menu interaction, and live UDP telemetry haptics.
+- **`v1.0` Funding Goal on Ko-fi ([ko-fi.com/jvtarran](https://ko-fi.com/jvtarran)):** Voluntary donations are warmly appreciated to help cover the development hours invested in **`v1.0`**. Once the `v1.0` goal is funded, work will expand into the next wave of **major post-v1 improvements** and additional VR cockpit features.
+- Non-financial support is equally appreciated: starring the repository, sharing VR flight-test feedback, contributing locales, or opening pull requests.
+
+---
+
 ## Sumário / Contents
 
 - [Arquitetura Geral / How It Works](#arquitetura-geral--how-it-works)
@@ -35,7 +49,6 @@
 - [Complete Guide in English (US)](#-complete-guide-english-us)
 - [Compilação e Testes / Build & Tests](#compilação-e-testes--build--tests)
 - [Estrutura do Repositório](#estrutura-do-repositório)
-- [Apoie o Desenvolvimento / Support Development](#apoie-o-desenvolvimento--support-development)
 - [Licença & Incorporação Comercial / License & Commercial Integration](#licença--incorporação-comercial--license--commercial-integration)
 
 ---
@@ -302,20 +315,6 @@ il2_vr_qol/
 ├── iniciar_mod_il2_vr.bat        # Launcher rápido no Windows
 └── reparar_vjoy_eixos.bat        # Configurador rápido vJoy Device 1 (Admin)
 ```
-
----
-
-## Apoie o Desenvolvimento / Support Development
-
-[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-Buy%20me%20a%20coffee%20(v1%20Goal)-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/jvtarran)
-
-**PT-BR:** O **IL-2 VR QoL Companion** é 100% gratuito e de código aberto sob a licença GNU GPLv3 — sem *paywalls* ou recursos bloqueados. Levar o projeto até o marco **`v1.0`** exige dezenas de horas de engenharia em matemática 6DoF, OpenVR Overlays, filtragem de movimento, Mouse VR para DirectInput e háptica por telemetria UDP.
-- **Meta `v1.0` no Ko-fi ([ko-fi.com/jvtarran](https://ko-fi.com/jvtarran)):** Contribuições voluntárias são muito bem-vindas para ajudar a remunerar as horas dedicadas à construção da **`v1.0`**. Assim que a meta da `v1.0` for financiada, o projeto entra em um novo ciclo focado em **melhorias maiores pós-v1** e novos recursos de imersão no cockpit VR.
-- Outras formas valiosas de apoiar: deixar uma ⭐ no repositório, reportar bugs com testes em voo, sugerir traduções ou enviar *pull requests*.
-
-**EN-US:** **IL-2 VR QoL Companion** is 100% free and open source under GNU GPLv3 — with no paywalls or locked features. Bringing this companion from early prototypes to **`v1.0`** represents significant engineering time across 6DoF flight math, OpenVR overlays, DirectInput-safe VR menu interaction, and live UDP telemetry haptics.
-- **`v1.0` Funding Goal on Ko-fi ([ko-fi.com/jvtarran](https://ko-fi.com/jvtarran)):** Voluntary donations are warmly appreciated to help cover the development hours invested in **`v1.0`**. Once the `v1.0` goal is funded, work will expand into the next wave of **major post-v1 improvements** and additional VR cockpit features.
-- Non-financial support is equally appreciated: starring the repository, sharing VR flight-test feedback, contributing locales, or opening pull requests.
 
 ---
 
