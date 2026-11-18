@@ -1734,7 +1734,7 @@ int main(int argc, char** argv) {
                     if (seat.recenterFromRawHmdPose(vrState.hmdRawPose)) {
                         vrState = vr.pollState();
                         vrMouseScreenAnchored = false;
-                        lastHotkeyAction = "Origem recentralizada na cabeca (Hold L3)";
+                        lastHotkeyAction = "Origem recentralizada na cabeca (Hold L3+R3)";
                         if (!hudCustomPlaced) {
                             pendingHudReanchor = showVrHud;
                         }
@@ -2649,6 +2649,15 @@ int main(int argc, char** argv) {
             }
             ImGui::PopStyleColor();
             ImGui::SameLine();
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.68f, 0.22f, 0.20f, 1.0f));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.84f, 0.30f, 0.26f, 1.0f));
+            if (ImGui::Button((std::string(locale.tr("btn.hide_hud", "Ocultar / Fechar HUD VR [Segurar L3]")) + "###KbHideHudBtn").c_str(), ImVec2(260.0f, 30.0f))) {
+                bindingEngine.cancelCapture();
+                captureTargetEntryIdx = -1;
+                toggleVrHud("Botao Fechar HUD");
+            }
+            ImGui::PopStyleColor(2);
+            ImGui::SameLine();
 
             if (ImGui::Checkbox(locale.tr("chk.callout_layer", "Mostrar Mapa Visual 3D nos Controles VR"), &showControllerCallouts)) {
                 saveCurrentSettings();
@@ -3040,6 +3049,12 @@ int main(int argc, char** argv) {
             hudScreen = HudScreen::KeybindsEditor;
         }
         ImGui::PopStyleColor(2);
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.68f, 0.22f, 0.20f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.84f, 0.30f, 0.26f, 1.0f));
+        if (ImGui::Button((std::string(locale.tr("btn.hide_hud", "Ocultar / Fechar HUD VR [Segurar L3]")) + "###HideHudBtn").c_str(), ImVec2(-1.0f, 30.0f))) {
+            toggleVrHud("Botao Fechar HUD");
+        }
+        ImGui::PopStyleColor(2);
         if (ImGui::Checkbox(locale.tr("chk.callout_layer", "Mostrar Mapa Visual 3D nos Controles VR"), &showControllerCallouts)) {
             saveCurrentSettings();
         }
@@ -3104,7 +3119,7 @@ int main(int argc, char** argv) {
         }
 
         ImGui::Separator();
-        if (ImGui::Button(locale.tr("btn.recenter_head", "Recentralizar Origem na Cabeca (Botao Y)"), ImVec2(-1.0f, 32.0f))) {
+        if (ImGui::Button(locale.tr("btn.recenter_head", "Recentralizar Origem na Cabeca [Segurar L3+R3]"), ImVec2(-1.0f, 32.0f))) {
             hudCustomPlaced = false;
             if (vr.isInitialized() && vrState.hmdValid) {
                 if (!seat.hasOriginalBackup()) {
@@ -3139,7 +3154,7 @@ int main(int argc, char** argv) {
                 lastHotkeyAction = "Painel HUD reposicionado na sua frente";
             }
         }
-        if (ImGui::Checkbox(locale.tr("chk.show_hud", "Mostrar HUD VR (3x L3 / Ctrl+Alt+O)"), &showVrHud)) {
+        if (ImGui::Checkbox(locale.tr("chk.show_hud", "Mostrar HUD VR (Segurar L3 / Ctrl+Alt+O)"), &showVrHud)) {
             vr.setOverlayVisible(showVrHud);
             if (showVrHud && !hudCustomPlaced && vrState.hmdValid) {
                 pendingHudReanchor = true;

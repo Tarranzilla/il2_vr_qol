@@ -10,10 +10,10 @@
     "mode.origin.active": "MODE: EDIT VR ORIGIN (Grip = Drag World) [3x R3]",
     "mode.origin.inactive": "MODE: FLIGHT / PILOT (Grip = Stick/Throttle) [3x R3]",
     "btn.connect_steamvr": "Connect to SteamVR Now",
-    "btn.recenter_head": "Recenter Origin at Head Pose [Hold L3]",
+    "btn.recenter_head": "Recenter Origin at Head Pose [Hold L3+R3]",
     "btn.il2_recenter": "NumPad 5 -> IL-2 Recenter",
     "btn.hud_front": "Center HUD in Front",
-    "chk.show_hud": "Show VR HUD (3x L3 / Ctrl+Alt+O)",
+    "chk.show_hud": "Show VR HUD (Hold L3 / Ctrl+Alt+O)",
     "chk.invert_drag": "Invert 3D World Drag (Grip)",
     "lbl.drag_speed": "Drag Speed",
     "lbl.laser_pitch": "Laser Tilt Angle",
@@ -95,6 +95,7 @@
     "btn.test_impact": "Test Impact",
     "btn.stop_haptics_test": "Stop",
     "btn.open_keybinds": "Controls & Keybinds Editor (Profiles)",
+    "btn.hide_hud": "Hide / Close VR HUD [Hold L3]",
     "btn.back_to_hud": "<- Back to Main HUD",
     "chk.callout_layer": "Show 3D Controller Callout Map",
     "chk.callout_companion": "Include Companion Actions in 3D Map",
@@ -121,6 +122,6 @@
     "kb.btn_clear": "Clear",
     "kb.chk_3d": "3D",
     "bar.grab_hud": "=== GRAB BAR HERE (Trigger/Grip + Stick Dist.) TO MOVE HUD ===",
-    "guide.text": "Quest 3:\n  3x L3 (Left): Toggle this VR HUD\n  3x R3 (Right): Toggle Flight <-> Edit VR Origin\n  Hold L3 (0.65s): Recenter Origin at head pose\n  Hold R3 (0.65s): Toggle VR Raycaster Mouse in IL-2 Menus\n  Hold R/L GRIP: 6DoF Stick / Latched Throttle\n  X, Y, A, B buttons: Freed for IL-2 aircraft & combat binds (see Keybinds!)"
+    "guide.text": "Quest 3:\n  Hold L3 (0.65s): Show / Hide this VR HUD\n  3x R3 (Right): Toggle Flight <-> Edit VR Origin\n  Hold L3 + R3 (0.65s): Recenter Origin at head pose\n  Hold R3 (0.65s): Toggle VR Raycaster Mouse in IL-2 Menus\n  Hold R/L GRIP: 6DoF Stick / Latched Throttle\n  X, Y, A, B buttons: Freed for IL-2 aircraft & combat binds (see Keybinds!)"
   }
 }

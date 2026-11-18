@@ -10,10 +10,10 @@
     "mode.origin.active": "MODO: AJUSTAR ORIGEM 3D (Grip = Arrastar Mundo) [3x R3]",
     "mode.origin.inactive": "MODO: VOAR / PILOTAGEM (Grip = Manche/Manete) [3x R3]",
     "btn.connect_steamvr": "Conectar ao SteamVR Agora",
-    "btn.recenter_head": "Recentralizar Origem na Cabeca [Segurar L3]",
+    "btn.recenter_head": "Recentralizar Origem na Cabeca [Segurar L3+R3]",
     "btn.il2_recenter": "NumPad 5 -> Recenter IL-2",
     "btn.hud_front": "Painel na Frente",
-    "chk.show_hud": "Mostrar HUD VR (3x L3 / Ctrl+Alt+O)",
+    "chk.show_hud": "Mostrar HUD VR (Segurar L3 / Ctrl+Alt+O)",
     "chk.invert_drag": "Inverter Arraste 3D (Grip)",
     "lbl.drag_speed": "Vel. Arraste",
     "lbl.laser_pitch": "Inclinacao Laser",
@@ -95,6 +95,7 @@
     "btn.test_impact": "Testar Impacto",
     "btn.stop_haptics_test": "Parar",
     "btn.open_keybinds": "Editor de Controles & Keybinds (Perfis)",
+    "btn.hide_hud": "Ocultar / Fechar HUD VR [Segurar L3]",
     "btn.back_to_hud": "<- Voltar ao Painel Principal",
     "chk.callout_layer": "Mostrar Mapa Visual 3D nos Controles VR",
     "chk.callout_companion": "Mostrar Acoes do Companion no Mapa 3D",
@@ -121,6 +122,6 @@
     "kb.btn_clear": "Limpar",
     "kb.chk_3d": "3D",
     "bar.grab_hud": "=== SEGURE AQUI (Gatilho/Grip + Analogico Dist.) PARA MOVER PAINEL ===",
-    "guide.text": "Quest 3:\n  3x L3 (Esq): Abrir/Fechar este HUD\n  3x R3 (Dir): Alternar Voo <-> Editar Origem 3D\n  Segurar L3 (0.65s): Recentralizar Origem na cabeca\n  Segurar R3 (0.65s): Ativar/Desativar Mouse VR nos Menus do IL-2\n  Segurar GRIP Dir/Esq: Manche 6DoF / Manete Travada\n  Botoes X, Y, A, B: Liberados para os comandos principais do aviao (veja Keybinds!)"
+    "guide.text": "Quest 3:\n  Segurar L3 (0.65s): Abrir / Ocultar este HUD VR\n  3x R3 (Dir): Alternar Voo <-> Editar Origem 3D\n  Segurar L3 + R3 (0.65s): Recentralizar Origem na cabeca\n  Segurar R3 (0.65s): Ativar/Desativar Mouse VR nos Menus do IL-2\n  Segurar GRIP Dir/Esq: Manche 6DoF / Manete Travada\n  Botoes X, Y, A, B: Liberados para os comandos principais do aviao (veja Keybinds!)"
   }
 }

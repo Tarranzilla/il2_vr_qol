@@ -657,20 +657,24 @@ TEST_CASE("KeybindProfileStore protects immutable Global Default and persists cu
     CHECK(global.id == il2vr::KeybindProfileStore::kGlobalDefaultId);
 
     // Companion complex commands free up X, Y, A, B for IL-2 actions.
-    bool sawL3Triple = false;
-    bool sawL3Hold = false;
+    bool sawL3HoldHud = false;
+    bool sawL3R3HoldRecenter = false;
     bool sawR3Triple = false;
     bool sawR3Hold = false;
     bool sawGearOnRightB = false;
     bool sawEjectTwoButton = false;
     for (const auto& e : global.entries) {
         if (e.actionId == "companion.toggle_hud") {
-            sawL3Triple = (e.trigger.primary.hand == il2vr::VrHand::Left &&
+            sawL3HoldHud = (e.trigger.primary.hand == il2vr::VrHand::Left &&
                 e.trigger.primary.button == il2vr::VrButtonId::ThumbClick &&
-                e.trigger.gesture == il2vr::VrGesture::Triple3x);
+                !e.trigger.isTwoButton() &&
+                e.trigger.gesture == il2vr::VrGesture::LongHold);
         } else if (e.actionId == "companion.recenter_seat") {
-            sawL3Hold = (e.trigger.primary.hand == il2vr::VrHand::Left &&
+            sawL3R3HoldRecenter = (e.trigger.isTwoButton() &&
+                e.trigger.primary.hand == il2vr::VrHand::Left &&
                 e.trigger.primary.button == il2vr::VrButtonId::ThumbClick &&
+                e.trigger.secondary.hand == il2vr::VrHand::Right &&
+                e.trigger.secondary.button == il2vr::VrButtonId::ThumbClick &&
                 e.trigger.gesture == il2vr::VrGesture::LongHold);
         } else if (e.actionId == "companion.toggle_origin_mode") {
             sawR3Triple = (e.trigger.primary.hand == il2vr::VrHand::Right &&
@@ -687,8 +691,8 @@ TEST_CASE("KeybindProfileStore protects immutable Global Default and persists cu
             sawEjectTwoButton = (e.trigger.isTwoButton() && e.trigger.gesture == il2vr::VrGesture::LongHold);
         }
     }
-    CHECK(sawL3Triple);
-    CHECK(sawL3Hold);
+    CHECK(sawL3HoldHud);
+    CHECK(sawL3R3HoldRecenter);
     CHECK(sawR3Triple);
     CHECK(sawR3Hold);
     CHECK(sawGearOnRightB);
@@ -748,20 +752,42 @@ TEST_CASE("VrInputBindingEngine handles complex companion gestures, 2-button hol
     st.left.valid = true;
     st.right.valid = true;
 
-    // 1. Holding L3 for >= 0.65s fires recenterSeat without firing 3x L3 toggleHud.
+    // 1. Holding L3 alone for >= 0.65s fires toggleHud without firing recenterSeat.
     st.left.secondaryBtn = true;
-    bool recentered = false;
+    st.right.secondaryBtn = false;
     bool hudToggled = false;
+    bool recentered = false;
+    for (int i = 0; i < 15; ++i) {
+        const auto res = engine.update(st, global, 0.05f, false, false);
+        hudToggled = hudToggled || res.toggleHud;
+        recentered = recentered || res.recenterSeat;
+    }
+    CHECK(hudToggled);
+    CHECK_FALSE(recentered);
+
+    // Release L3 cleanly.
+    st.left.secondaryBtn = false;
+    engine.update(st, global, 0.1f, false, false);
+
+    // 1b. Holding L3 + R3 together for >= 0.65s fires recenterSeat without firing single L3 toggleHud or single R3 toggleVrMouse.
+    st.left.secondaryBtn = true;
+    st.right.secondaryBtn = true;
+    recentered = false;
+    hudToggled = false;
+    bool mouseToggled = false;
     for (int i = 0; i < 15; ++i) {
         const auto res = engine.update(st, global, 0.05f, false, false);
         recentered = recentered || res.recenterSeat;
         hudToggled = hudToggled || res.toggleHud;
+        mouseToggled = mouseToggled || res.toggleVrMouse;
     }
     CHECK(recentered);
     CHECK_FALSE(hudToggled);
+    CHECK_FALSE(mouseToggled);
 
-    // Release L3 cleanly.
+    // Release both L3 and R3 cleanly.
     st.left.secondaryBtn = false;
+    st.right.secondaryBtn = false;
     engine.update(st, global, 0.1f, false, false);
 
     // 2. Simultaneous 2-button hold (Left X + Left Y >= 0.65s) triggers bc_eject ("lctrl+e") without misfiring single X.

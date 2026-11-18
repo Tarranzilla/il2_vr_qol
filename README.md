@@ -1,6 +1,6 @@
-# IL-2 VR QoL Companion (`v0.9.0`)
+# IL-2 VR QoL Companion (`v0.9.1`)
 
-![Version](https://img.shields.io/badge/version-v0.9.0-0ea5e9)
+![Version](https://img.shields.io/badge/version-v0.9.1-0ea5e9)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3%20%2B%20Commercial-blue.svg)](LICENSE)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20v1-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/jvtarran)
 ![Platform](https://img.shields.io/badge/Windows-10%2F11%20x64-0078d4)
@@ -99,9 +99,9 @@ flowchart LR
 
 | Quest 3 Input | Action | When / Where |
 |---|---|---|
-| **`3x L3`** *(Left thumbstick triple-click)* | **Open / Close** the floating VR HUD | Anytime |
+| **`Hold L3` (`0.65 s`)** | **Show / Hide** the floating VR HUD | Anytime |
 | **`3x R3`** *(Right thumbstick triple-click)* | Toggle **6DoF Flight Mode ↔ Edit 3D Origin** | Anytime |
-| **`Hold L3` (`0.65 s`)** | **Recenter VR Origin** at current head pose | Anytime |
+| **`Hold L3 + R3`** *(`Together 0.65 s`)* | **Recenter VR Origin** at current head pose | Anytime |
 | **`Hold R3` (`0.65 s`)** | **Toggle VR Raycaster Mouse** over game menus | Menus / Cockpit |
 | **`Right Grip` / `Left Grip`** *(Flight)* | Hold **6DoF Virtual Stick** / **Virtual Throttle Lever** | In flight |
 | **`Right Trigger`** *(Held)* | **Fire All Guns** (`vJoy Btn 1`) | In flight |
@@ -141,7 +141,7 @@ flowchart LR
 
 - **Why:** On Quest 3 over OpenVR, IL-2 runs in `TrackingUniverseStanding`. Writing `SeatedZeroPose` directly causes `~180°` yaw jumps. `SeatManager` exclusively reads/writes `WorkingStandingZeroPose`, backs up your original SteamVR Chaperone on connect, and translates along the pilot's horizontal facing vector (`Yaw`).
 - **How to use:**
-  1. Sit comfortably and **hold `L3` (`0.65 s`)** *(or press HUD `Recenter`)* to snap the cockpit origin to your head.
+  1. Sit comfortably and **hold `L3 + R3` (`0.65 s`)** *(or press HUD `Recenter`)* to snap the cockpit origin to your head.
   2. To lean closer to instruments, raise your seat over the cowling, or center laterally: **triple-click Right Thumbstick (`3x R3`)** (confirmed by a haptic pulse -> `EDIT 3D ORIGIN`).
   3. Hold either **`Grip`** in mid-air and drag the world around you (`Yaw` remains locked so the horizon never tilts).
   4. Triple-click **`R3`** again to lock and return to flight.
@@ -151,7 +151,7 @@ flowchart LR
 
 - Renders simultaneously in a Windows desktop debug window and a **DX11 OpenVR overlay** (`0.62 m` default width), with automatic laser raycasting from whichever hand aims at the panel.
 - **How to use:**
-  - Press **`3x L3`** anytime to toggle HUD visibility without consuming flight buttons.
+  - **Hold `L3` (`0.65 s`)** anytime (or click **`Hide / Close VR HUD`** inside the panel) to toggle HUD visibility without consuming flight buttons.
   - Hold **`Trigger` or `Grip`** on the bottom blue bar (`GRAB BAR HERE`) to move the HUD anywhere in your cockpit; push **Thumbstick Up/Down** while holding to adjust distance (`0.35 m` to `1.60 m`). Click **`Panel in Front`** in Pillar 1 anytime to summon it back.
 
 #### Pillar 2 — 6DoF Virtual Stick & Throttle (`Free Mode` vs. `Anchored Mode`)
@@ -327,9 +327,9 @@ O fluxo principal conecta os controladores e headset **Meta Quest 3** via **Stea
 
 | Controle no Quest 3 | Ação | Onde / Quando |
 |---|---|---|
-| **`3x L3`** *(clique triplo analógico Esq)* | **Abrir / Fechar** o painel HUD em VR | Em qualquer momento |
+| **`Segurar L3` (`0.65 s`)** | **Abrir / Ocultar** o painel HUD em VR | Em qualquer momento |
 | **`3x R3`** *(clique triplo analógico Dir)* | Alternar **Modo Voo 6DoF ↔ Ajustar Origem 3D** | Em qualquer momento |
-| **`Segurar L3` (`0.65 s`)** | **Recentralizar Origem VR** na pose atual da cabeça | Em qualquer momento |
+| **`Segurar L3 + R3`** *(`Juntos 0.65 s`)* | **Recentralizar Origem VR** na pose atual da cabeça | Em qualquer momento |
 | **`Segurar R3` (`0.65 s`)** | **Ligar / Desligar Mouse VR** nos menus do jogo | Menus / Cockpit |
 | **`Grip Direito` / `Esquerdo`** *(Modo Voo)* | **Manche Virtual 6DoF** / **Manete de Potência Travada** | Em voo |
 | **`Gatilho Direito`** *(Segurado)* | **Todas as Armas / Metralhadoras** (`vJoy 1`) | Em voo |
@@ -369,14 +369,14 @@ O fluxo principal conecta os controladores e headset **Meta Quest 3** via **Stea
 
 - **Por que existe:** No Quest 3 via OpenVR, o IL-2 executa em `TrackingUniverseStanding`. Alterar `SeatedZeroPose` mistura sistemas e gera saltos de `~180°`. O `SeatManager` atua exclusivamente em `WorkingStandingZeroPose`, salva backup do Chaperone original na conexão e movimenta relativo à direção horizontal do piloto (`Yaw`).
 - **Como interagir:**
-  1. Sente-se confortável e **segure `L3` (`0.65 s`)** para centralizar a cabine na sua cabeça.
+  1. Sente-se confortável e **segure `L3 + R3` (`0.65 s`)** para centralizar a cabine na sua cabeça.
   2. Para ajustar altura, distância ao painel ou lateralidade: dê **`3x R3`** (`MODO: AJUSTAR ORIGEM 3D`), segure qualquer **`Grip`** no ar para arrastar a origem 3D (`Yaw` travado) e dê outro **`3x R3`** para travar no voo.
 
 #### HUD VR Flutuante & Barra Agarrável Estilo Quest 3
 *Arquivos principais: [`main.cpp`](src/app/main.cpp), [`MathTypes.cpp`](src/core/MathTypes.cpp)*
 
 - Roda simultaneamente na janela desktop e em **overlay D3D11 OpenVR** (`0.62 m`), aceitando ponteiro laser das duas mãos.
-- Use **`3x L3`** para abrir/fechar em voo; segure **Gatilho/Grip** na barra azul inferior (`=== SEGURE AQUI ===`) + **Analógico Y** (`0.35 m` a `1.60 m`) para posicionar o HUD onde preferir no cockpit. Clique em **`Painel na Frente`** no Pilar 1 para trazê-lo de volta.
+- **Segure `L3` (`0.65 s`)** (ou clique no botão **`Ocultar / Fechar HUD VR`** dentro do HUD) para abrir/fechar em voo; segure **Gatilho/Grip** na barra azul inferior (`=== SEGURE AQUI ===`) + **Analógico Y** (`0.35 m` a `1.60 m`) para posicionar o HUD onde preferir no cockpit. Clique em **`Painel na Frente`** no Pilar 1 para trazê-lo de volta.
 
 #### Pilar 2 — Manche & Manete Virtuais 6DoF (`Modo Livre` vs. `Modo Ancorado`)
 *Arquivos principais: [`MathTypes.h`](src/core/MathTypes.h), [`MathTypes.cpp`](src/core/MathTypes.cpp), [`main.cpp`](src/app/main.cpp)*

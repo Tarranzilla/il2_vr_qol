@@ -1,0 +1,878 @@
+{
+  "entries": [
+    {
+      "actionId": "companion.toggle_hud",
+      "enabled": true,
+      "id": "companion.toggle_hud",
+      "keyCombo": [],
+      "outputType": "companion",
+      "showInCallout": true,
+      "trigger": {
+        "gesture": "triple_3x",
+        "holdSeconds": 0.0,
+        "primary": {
+          "button": "thumb_click",
+          "hand": "left"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "companion.toggle_origin_mode",
+      "enabled": true,
+      "id": "companion.toggle_origin_mode",
+      "keyCombo": [],
+      "outputType": "companion",
+      "showInCallout": true,
+      "trigger": {
+        "gesture": "triple_3x",
+        "holdSeconds": 0.0,
+        "primary": {
+          "button": "thumb_click",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "companion.recenter_seat",
+      "enabled": true,
+      "id": "companion.recenter_seat",
+      "keyCombo": [],
+      "outputType": "companion",
+      "showInCallout": true,
+      "trigger": {
+        "gesture": "long_hold",
+        "holdSeconds": 0.6499999761581421,
+        "primary": {
+          "button": "thumb_click",
+          "hand": "left"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "companion.toggle_vr_mouse",
+      "enabled": true,
+      "id": "companion.toggle_vr_mouse",
+      "keyCombo": [],
+      "outputType": "companion",
+      "showInCallout": true,
+      "trigger": {
+        "gesture": "long_hold",
+        "holdSeconds": 0.6499999761581421,
+        "primary": {
+          "button": "thumb_click",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "companion.flight_stick_hold",
+      "enabled": true,
+      "id": "companion.flight_stick_hold",
+      "keyCombo": [],
+      "outputType": "companion",
+      "showInCallout": true,
+      "trigger": {
+        "gesture": "while_held",
+        "holdSeconds": 0.0,
+        "primary": {
+          "button": "grip",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "companion.flight_throttle_hold",
+      "enabled": true,
+      "id": "companion.flight_throttle_hold",
+      "keyCombo": [],
+      "outputType": "companion",
+      "showInCallout": true,
+      "trigger": {
+        "gesture": "while_held",
+        "holdSeconds": 0.0,
+        "primary": {
+          "button": "grip",
+          "hand": "left"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "gear",
+      "enabled": true,
+      "id": "il2.gear",
+      "keyCombo": [
+        "g"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": true,
+      "trigger": {
+        "gesture": "tap_1x",
+        "holdSeconds": 0.0,
+        "primary": {
+          "button": "secondary",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "flaps_dn",
+      "enabled": true,
+      "id": "il2.flaps_dn",
+      "keyCombo": [
+        "f"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": true,
+      "trigger": {
+        "gesture": "tap_1x",
+        "holdSeconds": 0.0,
+        "primary": {
+          "button": "primary",
+          "hand": "left"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "flaps_up",
+      "enabled": true,
+      "id": "il2.flaps_up",
+      "keyCombo": [
+        "lshift",
+        "f"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": true,
+      "trigger": {
+        "gesture": "double_2x",
+        "holdSeconds": 0.0,
+        "primary": {
+          "button": "primary",
+          "hand": "left"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "throw_bombs_command",
+      "enabled": true,
+      "id": "il2.throw_bombs_command",
+      "keyCombo": [
+        "b"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": true,
+      "trigger": {
+        "gesture": "double_2x",
+        "holdSeconds": 0.0,
+        "primary": {
+          "button": "primary",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "launch_rockets_command",
+      "enabled": true,
+      "id": "il2.launch_rockets_command",
+      "keyCombo": [
+        "r"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": true,
+      "trigger": {
+        "gesture": "long_hold",
+        "holdSeconds": 0.5,
+        "primary": {
+          "button": "primary",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "bc_eject",
+      "enabled": true,
+      "id": "il2.bc_eject",
+      "keyCombo": [
+        "lctrl",
+        "e"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": true,
+      "trigger": {
+        "gesture": "long_hold",
+        "holdSeconds": 0.6499999761581421,
+        "primary": {
+          "button": "primary",
+          "hand": "left"
+        },
+        "relation": "simultaneous",
+        "secondary": {
+          "button": "secondary",
+          "hand": "left"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "all_guns_fire",
+      "enabled": true,
+      "id": "il2.all_guns_fire",
+      "keyCombo": [
+        "space"
+      ],
+      "outputType": "vjoy",
+      "showInCallout": true,
+      "trigger": {
+        "gesture": "while_held",
+        "holdSeconds": 0.0,
+        "primary": {
+          "button": "trigger",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 1
+    },
+    {
+      "actionId": "weapon_group_1_fire",
+      "enabled": true,
+      "id": "il2.weapon_group_1_fire",
+      "keyCombo": [
+        "ralt",
+        "space"
+      ],
+      "outputType": "vjoy",
+      "showInCallout": false,
+      "trigger": {
+        "gesture": "tap_1x",
+        "holdSeconds": 0.6000000238418579,
+        "primary": {
+          "button": "none",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 1
+    },
+    {
+      "actionId": "weapon_group_2_fire",
+      "enabled": true,
+      "id": "il2.weapon_group_2_fire",
+      "keyCombo": [
+        "lalt",
+        "space"
+      ],
+      "outputType": "vjoy",
+      "showInCallout": true,
+      "trigger": {
+        "gesture": "while_held",
+        "holdSeconds": 0.0,
+        "primary": {
+          "button": "primary",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 2
+    },
+    {
+      "actionId": "canopy_open_close",
+      "enabled": true,
+      "id": "il2.canopy_open_close",
+      "keyCombo": [
+        "ralt",
+        "c"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": true,
+      "trigger": {
+        "gesture": "long_hold",
+        "holdSeconds": 0.6000000238418579,
+        "primary": {
+          "button": "secondary",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "airbrakes",
+      "enabled": true,
+      "id": "il2.airbrakes",
+      "keyCombo": [
+        "ralt",
+        "b"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": true,
+      "trigger": {
+        "gesture": "double_2x",
+        "holdSeconds": 0.0,
+        "primary": {
+          "button": "secondary",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "rpc_wheel_brakes",
+      "enabled": true,
+      "id": "il2.rpc_wheel_brakes",
+      "keyCombo": [
+        "slash"
+      ],
+      "outputType": "vjoy",
+      "showInCallout": true,
+      "trigger": {
+        "gesture": "while_held",
+        "holdSeconds": 0.0,
+        "primary": {
+          "button": "trigger",
+          "hand": "left"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 3
+    },
+    {
+      "actionId": "parking_brakes",
+      "enabled": true,
+      "id": "il2.parking_brakes",
+      "keyCombo": [
+        "lshift",
+        "slash"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": true,
+      "trigger": {
+        "gesture": "tap_1x",
+        "holdSeconds": 0.0,
+        "primary": {
+          "button": "secondary",
+          "hand": "left"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "tailwheel_lock",
+      "enabled": true,
+      "id": "il2.tailwheel_lock",
+      "keyCombo": [
+        "lshift",
+        "g"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": false,
+      "trigger": {
+        "gesture": "tap_1x",
+        "holdSeconds": 0.6000000238418579,
+        "primary": {
+          "button": "none",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "bombdoors_toggle",
+      "enabled": true,
+      "id": "il2.bombdoors_toggle",
+      "keyCombo": [
+        "n"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": true,
+      "trigger": {
+        "gesture": "tap_1x",
+        "holdSeconds": 0.0,
+        "primary": {
+          "button": "trigger",
+          "hand": "left"
+        },
+        "relation": "simultaneous",
+        "secondary": {
+          "button": "primary",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "all_guns_reload",
+      "enabled": true,
+      "id": "il2.all_guns_reload",
+      "keyCombo": [
+        "lalt",
+        "r"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": true,
+      "trigger": {
+        "gesture": "tap_1x",
+        "holdSeconds": 0.0,
+        "primary": {
+          "button": "primary",
+          "hand": "right"
+        },
+        "relation": "simultaneous",
+        "secondary": {
+          "button": "secondary",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "all_engines_switch",
+      "enabled": true,
+      "id": "il2.all_engines_switch",
+      "keyCombo": [
+        "e"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": true,
+      "trigger": {
+        "gesture": "long_hold",
+        "holdSeconds": 0.6000000238418579,
+        "primary": {
+          "button": "secondary",
+          "hand": "left"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "autoradiators",
+      "enabled": true,
+      "id": "il2.autoradiators",
+      "keyCombo": [
+        "lshift",
+        "r"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": false,
+      "trigger": {
+        "gesture": "tap_1x",
+        "holdSeconds": 0.6000000238418579,
+        "primary": {
+          "button": "none",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "autorpmlimiter",
+      "enabled": true,
+      "id": "il2.autorpmlimiter",
+      "keyCombo": [
+        "lshift",
+        "n"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": false,
+      "trigger": {
+        "gesture": "tap_1x",
+        "holdSeconds": 0.6000000238418579,
+        "primary": {
+          "button": "none",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "autoaltitudinalcorrection",
+      "enabled": true,
+      "id": "il2.autoaltitudinalcorrection",
+      "keyCombo": [
+        "lshift",
+        "m"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": false,
+      "trigger": {
+        "gesture": "tap_1x",
+        "holdSeconds": 0.6000000238418579,
+        "primary": {
+          "button": "none",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "all_engines_boost",
+      "enabled": true,
+      "id": "il2.all_engines_boost",
+      "keyCombo": [
+        "lshift",
+        "b"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": false,
+      "trigger": {
+        "gesture": "tap_1x",
+        "holdSeconds": 0.6000000238418579,
+        "primary": {
+          "button": "none",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "pitch_trim_switch_up",
+      "enabled": true,
+      "id": "il2.pitch_trim_switch_up",
+      "keyCombo": [
+        "rctrl",
+        "down"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": false,
+      "trigger": {
+        "gesture": "tap_1x",
+        "holdSeconds": 0.6000000238418579,
+        "primary": {
+          "button": "none",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "pitch_trim_switch_dn",
+      "enabled": true,
+      "id": "il2.pitch_trim_switch_dn",
+      "keyCombo": [
+        "rctrl",
+        "up"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": false,
+      "trigger": {
+        "gesture": "tap_1x",
+        "holdSeconds": 0.6000000238418579,
+        "primary": {
+          "button": "none",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "trims_reset",
+      "enabled": true,
+      "id": "il2.trims_reset",
+      "keyCombo": [
+        "lctrl",
+        "t"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": false,
+      "trigger": {
+        "gesture": "tap_1x",
+        "holdSeconds": 0.6000000238418579,
+        "primary": {
+          "button": "none",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "throw_bombs_mode",
+      "enabled": true,
+      "id": "il2.throw_bombs_mode",
+      "keyCombo": [
+        "lwin",
+        "b"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": false,
+      "trigger": {
+        "gesture": "tap_1x",
+        "holdSeconds": 0.6000000238418579,
+        "primary": {
+          "button": "none",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "throw_bombs_delay",
+      "enabled": true,
+      "id": "il2.throw_bombs_delay",
+      "keyCombo": [
+        "lctrl",
+        "b"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": false,
+      "trigger": {
+        "gesture": "tap_1x",
+        "holdSeconds": 0.6000000238418579,
+        "primary": {
+          "button": "none",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "landing_lights",
+      "enabled": true,
+      "id": "il2.landing_lights",
+      "keyCombo": [
+        "rshift",
+        "l"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": false,
+      "trigger": {
+        "gesture": "tap_1x",
+        "holdSeconds": 0.6000000238418579,
+        "primary": {
+          "button": "none",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "cockpit_lights",
+      "enabled": true,
+      "id": "il2.cockpit_lights",
+      "keyCombo": [
+        "l"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": false,
+      "trigger": {
+        "gesture": "tap_1x",
+        "holdSeconds": 0.6000000238418579,
+        "primary": {
+          "button": "none",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "autopilot_device",
+      "enabled": true,
+      "id": "il2.autopilot_device",
+      "keyCombo": [
+        "ralt",
+        "a"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": false,
+      "trigger": {
+        "gesture": "tap_1x",
+        "holdSeconds": 0.6000000238418579,
+        "primary": {
+          "button": "none",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    },
+    {
+      "actionId": "cam_reset",
+      "enabled": true,
+      "id": "il2.cam_reset",
+      "keyCombo": [
+        "numpad5"
+      ],
+      "outputType": "keyboard",
+      "showInCallout": false,
+      "trigger": {
+        "gesture": "tap_1x",
+        "holdSeconds": 0.6000000238418579,
+        "primary": {
+          "button": "none",
+          "hand": "right"
+        },
+        "relation": "single",
+        "secondary": {
+          "button": "none",
+          "hand": "right"
+        }
+      },
+      "vjoyButton": 0
+    }
+  ],
+  "id": "custom_profile",
+  "name": "Custom Profile"
+}

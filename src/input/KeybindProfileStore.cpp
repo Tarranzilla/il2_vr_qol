@@ -268,9 +268,9 @@ KeybindProfile KeybindProfileStore::builtInGlobalDefault() {
     // 1. Companion Native Actions moved to complex inputs, keeping X, Y, A, B completely free!
     p.entries.push_back(makeCompanionEntry(
         "companion.toggle_hud", "companion.toggle_hud",
-        "Toggle VR HUD", "Abrir / Fechar HUD VR", 1,
+        "Toggle / Hide VR HUD", "Abrir / Ocultar HUD VR", 1,
         CompanionActionId::ToggleHud,
-        {{VrHand::Left, VrButtonId::ThumbClick}, {}, VrComboRelation::Single, VrGesture::Triple3x, 0.0f}));
+        {{VrHand::Left, VrButtonId::ThumbClick}, {}, VrComboRelation::Single, VrGesture::LongHold, 0.65f}));
     p.entries.push_back(makeCompanionEntry(
         "companion.toggle_origin_mode", "companion.toggle_origin_mode",
         "Flight <-> Edit 3D Origin", "Voo <-> Editar Origem 3D", 2,
@@ -280,7 +280,13 @@ KeybindProfile KeybindProfileStore::builtInGlobalDefault() {
         "companion.recenter_seat", "companion.recenter_seat",
         "Recenter VR Seat", "Recentralizar Assento VR", 3,
         CompanionActionId::RecenterSeat,
-        {{VrHand::Left, VrButtonId::ThumbClick}, {}, VrComboRelation::Single, VrGesture::LongHold, 0.65f}));
+        {
+            {VrHand::Left, VrButtonId::ThumbClick},
+            {VrHand::Right, VrButtonId::ThumbClick},
+            VrComboRelation::Simultaneous,
+            VrGesture::LongHold,
+            0.65f
+        }));
     p.entries.push_back(makeCompanionEntry(
         "companion.toggle_vr_mouse", "companion.toggle_vr_mouse",
         "Toggle VR Menu Mouse", "Ligar / Desligar Mouse VR", 4,

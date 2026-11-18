@@ -1,5 +1,5 @@
 ================================================================================
-  IL-2 VR QoL Companion (v0.9.0) - Quick Start & User Guide
+  IL-2 VR QoL Companion (v0.9.1) - Quick Start & User Guide
   Author: Joao Tarran (Tarranzilla) | GitHub: github.com/Tarranzilla/il2_vr_qol
   Support v1.0 Goal: https://ko-fi.com/jvtarran
   License: GNU GPLv3 + Commercial License (see LICENSE & COMMERCIAL_LICENSE.md)
@@ -36,9 +36,9 @@ STEP 2 - Launch Order (IMPORTANT)
 
 STEP 3 - Essential Quest 3 Controls (Global Default Profile)
   Companion Utility Commands (Complex inputs so X/Y/A/B stay 100% free!):
-  * 3x L3 (Triple-click LEFT thumbstick)  : Show / Hide the floating VR HUD
+  * Hold L3 (0.65s)                       : Show / Hide the floating VR HUD
   * 3x R3 (Triple-click RIGHT thumbstick) : Toggle Flight Mode <-> Edit 3D Origin
-  * Hold L3 (0.65s)                       : Recenter VR cockpit seat on your head
+  * Hold L3 + R3 Together (0.65s)         : Recenter VR cockpit seat on your head
   * Hold R3 (0.65s)                       : Toggle VR Raycaster Mouse in IL-2 Menus
   * Hold RIGHT / LEFT Grip                : 6DoF Virtual Stick / Throttle Lever
 
@@ -54,7 +54,7 @@ STEP 3 - Essential Quest 3 Controls (Global Default Profile)
   * LEFT Trigger + RIGHT A Together : Bomb Bay Doors Toggle (N)
 
 STEP 4 - Keybinds Editor, Multiple Profiles & 3D Controller Map
-  * Open the HUD (3x L3) and click "Controls & Keybinds Editor (Profiles)".
+  * Open the HUD (Hold L3 for 0.65s) and click "Controls & Keybinds Editor (Profiles)".
   * "Global Default (Immutable)" is read-only; click "Clone Global Now" to
     save custom profiles in config\profiles\ and rebind any button or 2-button
     combo using live "Capture VR".
@@ -75,11 +75,11 @@ PASSO 1 - Pre-requisitos e Ordem para Abrir
 
 PASSO 2 - Comandos no Quest 3 (Padrao Global Imutavel)
   Comandos do Companion (Complexos p/ liberar X, Y, A e B ao aviao!):
-  * 3x L3                : Abre / Fecha o HUD VR
-  * 3x R3                : Alterna Modo Voo <-> Editar Origem 3D
-  * Segurar L3 (0.65s)   : Recentraliza o assento na sua cabeca
-  * Segurar R3 (0.65s)   : Liga / Desliga Mouse VR nos Menus do IL-2
-  * Segurar Grip Dir/Esq : Manche 6DoF / Manete Travada
+  * Segurar L3 (0.65s)        : Abre / Oculta o HUD VR
+  * 3x R3                     : Alterna Modo Voo <-> Editar Origem 3D
+  * Segurar L3 + R3 (0.65s)   : Recentraliza o assento na sua cabeca
+  * Segurar R3 (0.65s)        : Liga / Desliga Mouse VR nos Menus do IL-2
+  * Segurar Grip Dir/Esq      : Manche 6DoF / Manete Travada
 
   Principais Comandos do Aviao (X, Y, A, B livres!):
   * Gatilho Dir                : Metralhadoras / Todas as Armas (vJoy 1)
