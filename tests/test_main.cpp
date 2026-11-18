@@ -439,7 +439,12 @@ TEST_CASE("Curved virtual mouse screen intersection and upright alignment", "[ma
 }
 
 #include "haptics/HapticsMixer.h"
+#include "input/Il2ActionsCatalog.h"
+#include "input/KeybindProfileStore.h"
+#include "input/KeybindTypes.h"
+#include "input/VrInputBindingEngine.h"
 #include "telemetry/Il2TelemetryParser.h"
+#include "vr/ControllerCalloutLayout.h"
 
 namespace {
 
@@ -644,4 +649,167 @@ TEST_CASE("HapticsMixer feels takeoff ground-roll, high-G turns, and silences wh
     CHECK_FALSE(snap.hasState);
     CHECK(snap.maxRpm() == 0.0f);
     CHECK(snap.stallBuffetAmp == 0.0f);
+}
+
+TEST_CASE("KeybindProfileStore protects immutable Global Default and persists custom profiles", "[keybinds]") {
+    const auto global = il2vr::KeybindProfileStore::builtInGlobalDefault();
+    CHECK(global.isImmutableDefault);
+    CHECK(global.id == il2vr::KeybindProfileStore::kGlobalDefaultId);
+
+    // Companion complex commands free up X, Y, A, B for IL-2 actions.
+    bool sawL3Triple = false;
+    bool sawL3Hold = false;
+    bool sawR3Triple = false;
+    bool sawR3Hold = false;
+    bool sawGearOnRightB = false;
+    bool sawEjectTwoButton = false;
+    for (const auto& e : global.entries) {
+        if (e.actionId == "companion.toggle_hud") {
+            sawL3Triple = (e.trigger.primary.hand == il2vr::VrHand::Left &&
+                e.trigger.primary.button == il2vr::VrButtonId::ThumbClick &&
+                e.trigger.gesture == il2vr::VrGesture::Triple3x);
+        } else if (e.actionId == "companion.recenter_seat") {
+            sawL3Hold = (e.trigger.primary.hand == il2vr::VrHand::Left &&
+                e.trigger.primary.button == il2vr::VrButtonId::ThumbClick &&
+                e.trigger.gesture == il2vr::VrGesture::LongHold);
+        } else if (e.actionId == "companion.toggle_origin_mode") {
+            sawR3Triple = (e.trigger.primary.hand == il2vr::VrHand::Right &&
+                e.trigger.primary.button == il2vr::VrButtonId::ThumbClick &&
+                e.trigger.gesture == il2vr::VrGesture::Triple3x);
+        } else if (e.actionId == "companion.toggle_vr_mouse") {
+            sawR3Hold = (e.trigger.primary.hand == il2vr::VrHand::Right &&
+                e.trigger.primary.button == il2vr::VrButtonId::ThumbClick &&
+                e.trigger.gesture == il2vr::VrGesture::LongHold);
+        } else if (e.actionId == "gear") {
+            sawGearOnRightB = (e.trigger.primary.hand == il2vr::VrHand::Right &&
+                e.trigger.primary.button == il2vr::VrButtonId::Secondary);
+        } else if (e.actionId == "bc_eject") {
+            sawEjectTwoButton = (e.trigger.isTwoButton() && e.trigger.gesture == il2vr::VrGesture::LongHold);
+        }
+    }
+    CHECK(sawL3Triple);
+    CHECK(sawL3Hold);
+    CHECK(sawR3Triple);
+    CHECK(sawR3Hold);
+    CHECK(sawGearOnRightB);
+    CHECK(sawEjectTwoButton);
+
+    const std::filesystem::path tmpDir = std::filesystem::temp_directory_path() / "il2vr_test_profiles";
+    std::error_code ec;
+    std::filesystem::remove_all(tmpDir, ec);
+
+    il2vr::KeybindProfileStore store;
+    store.loadDirectory(tmpDir);
+
+    std::string err;
+    CHECK_FALSE(store.saveProfile(global, err));
+    CHECK_FALSE(store.deleteProfile(il2vr::KeybindProfileStore::kGlobalDefaultId, err));
+
+    il2vr::KeybindProfile custom = il2vr::KeybindProfileStore::cloneAsEditable(global, "Bf109 Custom");
+    REQUIRE_FALSE(custom.isImmutableDefault);
+    REQUIRE(store.saveProfile(custom, err));
+
+    il2vr::KeybindProfileStore reloaded;
+    reloaded.loadDirectory(tmpDir);
+    REQUIRE(reloaded.profiles().size() == 2);
+    CHECK(reloaded.findById(il2vr::KeybindProfileStore::kGlobalDefaultId) != nullptr);
+    CHECK(reloaded.findById("bf109_custom") != nullptr);
+    CHECK(reloaded.deleteProfile("bf109_custom", err));
+
+    std::filesystem::remove_all(tmpDir, ec);
+}
+
+TEST_CASE("Il2ActionsCatalog parses .actions combos including slash/equals modifiers", "[keybinds]") {
+    const std::string sample =
+        "gear,                                             key_g,                                            0| // Gear\n"
+        "bc_eject,                                         key_lcontrol+key_e,                               0| // Eject\n"
+        "parking_brakes,                                   key_lshift+key_slash,                             0| // Parking\n"
+        "canopy_open_close,                                key_rmenu+key_c,                                  0| // Canopy\n"
+        "throw_bombs_mode,                                 key_lwin+key_b,                                   0| // Mode\n";
+
+    const auto parsed = il2vr::Il2ActionsCatalog::parseActionsText(sample);
+    REQUIRE(parsed.at("gear") == std::vector<std::string>{"g"});
+    REQUIRE(parsed.at("bc_eject") == std::vector<std::string>{"lctrl", "e"});
+    REQUIRE(parsed.at("parking_brakes") == std::vector<std::string>{"lshift", "slash"});
+    REQUIRE(parsed.at("canopy_open_close") == std::vector<std::string>{"ralt", "c"});
+    REQUIRE(parsed.at("throw_bombs_mode") == std::vector<std::string>{"lwin", "b"});
+
+    CHECK(il2vr::KeyboardInjector::resolveKey("slash").has_value());
+    CHECK(il2vr::KeyboardInjector::resolveKey("equals").has_value());
+    CHECK(il2vr::KeyboardInjector::resolveKey("lwin").has_value());
+}
+
+TEST_CASE("VrInputBindingEngine handles complex companion gestures, 2-button holds, and weapon suppression", "[keybinds]") {
+    const auto global = il2vr::KeybindProfileStore::builtInGlobalDefault();
+    il2vr::VrInputBindingEngine engine;
+
+    il2vr::VrFrameState st{};
+    st.runtimeRunning = true;
+    st.left.valid = true;
+    st.right.valid = true;
+
+    // 1. Holding L3 for >= 0.65s fires recenterSeat without firing 3x L3 toggleHud.
+    st.left.secondaryBtn = true;
+    bool recentered = false;
+    bool hudToggled = false;
+    for (int i = 0; i < 15; ++i) {
+        const auto res = engine.update(st, global, 0.05f, false, false);
+        recentered = recentered || res.recenterSeat;
+        hudToggled = hudToggled || res.toggleHud;
+    }
+    CHECK(recentered);
+    CHECK_FALSE(hudToggled);
+
+    // Release L3 cleanly.
+    st.left.secondaryBtn = false;
+    engine.update(st, global, 0.1f, false, false);
+
+    // 2. Simultaneous 2-button hold (Left X + Left Y >= 0.65s) triggers bc_eject ("lctrl+e") without misfiring single X.
+    st.left.primaryBtn = true;
+    st.left.menuBtn = true;
+    std::vector<std::vector<std::string>> firedCombos;
+    for (int i = 0; i < 16; ++i) {
+        const auto res = engine.update(st, global, 0.05f, false, false);
+        for (const auto& c : res.keyCombosTapped) {
+            firedCombos.push_back(c);
+        }
+    }
+    REQUIRE(firedCombos.size() == 1);
+    CHECK(firedCombos[0] == std::vector<std::string>{"lctrl", "e"});
+
+    // Release both, wait past tap defer window, then check suppressWeapons blocks IL-2 combos while keeping Companion toggles active.
+    st.left.primaryBtn = false;
+    st.left.menuBtn = false;
+    for (int i = 0; i < 6; ++i) {
+        engine.update(st, global, 0.05f, false, false);
+    }
+
+    st.right.triggerClick = true;
+    const auto suppressedRes = engine.update(st, global, 0.016f, true, false);
+    CHECK(suppressedRes.vjoyButtonsMask == 0);
+}
+
+TEST_CASE("ControllerCalloutLayout places all Tarjas without overlap and emits 2 lines for 2-button combos", "[keybinds][vr]") {
+    const auto global = il2vr::KeybindProfileStore::builtInGlobalDefault();
+    il2vr::VrFrameState st{};
+    st.runtimeRunning = true;
+    st.hmdValid = true;
+    st.hmdSeatedPose = il2vr::makeHorizontalPose({0.0f, 1.15f, 0.0f}, 0.0f);
+    st.left.valid = true;
+    st.left.pose = il2vr::makeHorizontalPose({-0.25f, 0.85f, -0.38f}, 0.0f);
+    st.right.valid = true;
+    st.right.pose = il2vr::makeHorizontalPose({0.25f, 0.85f, -0.38f}, 0.0f);
+
+    const il2vr::CalloutScene scene = il2vr::ControllerCalloutLayout::buildScene(global, st, true, true);
+    CHECK(scene.cards.size() >= 10);
+    CHECK_FALSE(il2vr::ControllerCalloutLayout::hasAnyCardOverlap(scene.cards, st.hmdSeatedPose, 0.004f));
+
+    int twoButtonCards = 0;
+    for (const auto& c : scene.cards) {
+        if (c.isTwoButton) {
+            ++twoButtonCards;
+        }
+    }
+    CHECK(twoButtonCards >= 2);
+    CHECK(scene.lines.size() == scene.cards.size() + static_cast<size_t>(twoButtonCards));
 }

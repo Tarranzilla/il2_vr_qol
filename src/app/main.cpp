@@ -1,11 +1,16 @@
 #include "core/LocaleManager.h"
 #include "core/MathTypes.h"
 #include "haptics/HapticsMixer.h"
+#include "input/Il2ActionsCatalog.h"
+#include "input/KeybindProfileStore.h"
+#include "input/KeybindTypes.h"
+#include "input/VrInputBindingEngine.h"
 #include "output/KeyboardInjector.h"
 #include "output/VJoyClient.h"
 #include "seat/SeatManager.h"
 #include "telemetry/Il2TelemetryParser.h"
 #include "telemetry/TelemetryListener.h"
+#include "vr/ControllerCalloutLayout.h"
 #include "vr/OpenVrBackend.h"
 
 #include <imgui.h>
@@ -62,6 +67,9 @@ struct AppSettings {
     float vrMouseScreenManualYawDeg = 0.0f;
     float vrMouseScreenPitchDeg = 0.0f;
     bool vrMouseFreeGripDrag = false;
+    std::string activeKeybindProfileId = il2vr::KeybindProfileStore::kGlobalDefaultId;
+    bool showControllerCallouts = false;
+    bool showCompanionInCallouts = true;
     il2vr::HapticsConfig haptics{};
 };
 
@@ -127,6 +135,9 @@ AppSettings loadAppSettings(const std::filesystem::path& path) {
             s.vrMouseScreenManualYawDeg = std::clamp(j.value("vrMouseScreenManualYawDeg", s.vrMouseScreenManualYawDeg), -180.0f, 180.0f);
             s.vrMouseScreenPitchDeg = std::clamp(j.value("vrMouseScreenPitchDeg", s.vrMouseScreenPitchDeg), -30.0f, 30.0f);
             s.vrMouseFreeGripDrag = j.value("vrMouseFreeGripDrag", s.vrMouseFreeGripDrag);
+            s.activeKeybindProfileId = j.value("activeKeybindProfileId", s.activeKeybindProfileId);
+            s.showControllerCallouts = j.value("showControllerCallouts", s.showControllerCallouts);
+            s.showCompanionInCallouts = j.value("showCompanionInCallouts", s.showCompanionInCallouts);
             s.haptics.masterEnabled = j.value("hapticsMasterEnabled", s.haptics.masterEnabled);
             s.haptics.masterGain = std::clamp(j.value("hapticsMasterGain", s.haptics.masterGain), 0.10f, 2.0f);
             s.haptics.buffetEnabled = j.value("hapticsBuffetEnabled", s.haptics.buffetEnabled);
@@ -171,6 +182,9 @@ bool saveAppSettings(const std::filesystem::path& path, const AppSettings& s) {
         {"vrMouseScreenManualYawDeg", s.vrMouseScreenManualYawDeg},
         {"vrMouseScreenPitchDeg", s.vrMouseScreenPitchDeg},
         {"vrMouseFreeGripDrag", s.vrMouseFreeGripDrag},
+        {"activeKeybindProfileId", s.activeKeybindProfileId},
+        {"showControllerCallouts", s.showControllerCallouts},
+        {"showCompanionInCallouts", s.showCompanionInCallouts},
         {"hapticsMasterEnabled", s.haptics.masterEnabled},
         {"hapticsMasterGain", s.haptics.masterGain},
         {"hapticsBuffetEnabled", s.haptics.buffetEnabled},
@@ -1205,7 +1219,40 @@ int main(int argc, char** argv) {
     bool prevVrMouseLeft = false;
     bool prevVrMouseRight = false;
     float vrMouseScrollAccum = 0.0f;
-    bool prevLeftPrimaryBtn = false;
+    il2vr::KeybindProfileStore keybindStore;
+    const std::filesystem::path profilesDir = configDir / "profiles";
+    keybindStore.loadDirectory(profilesDir);
+    if (!il2InputDir.empty()) {
+        // Apply current.actions keyboard mapping dynamically for IL-2 actions cleanly.
+    }
+    il2vr::KeybindProfile activeKeybindProfile =
+        (keybindStore.findById(appSettings.activeKeybindProfileId) != nullptr)
+            ? *keybindStore.findById(appSettings.activeKeybindProfileId)
+            : il2vr::KeybindProfileStore::builtInGlobalDefault();
+    if (!il2InputDir.empty()) {
+        il2vr::KeybindProfileStore::applyIl2ActionKeyOverrides(activeKeybindProfile, il2InputDir);
+    }
+    il2vr::VrInputBindingEngine bindingEngine;
+    bool showControllerCallouts = appSettings.showControllerCallouts;
+    bool showCompanionInCallouts = appSettings.showCompanionInCallouts;
+    uint16_t latestVJoyButtonsMask = 0;
+
+    enum class HudScreen { MainDebug = 0, KeybindsEditor = 1 };
+    HudScreen hudScreen = HudScreen::MainDebug;
+    int keybindsCategoryTab = 0; // 0=MainFlight, 1=CompanionVr, 2=EngineSystems, 3=All
+    std::array<char, 96> keybindsFilterBuf{};
+    std::array<char, 64> newProfileNameBuf{"Custom Profile"};
+    std::array<char, 64> renameProfileNameBuf{};
+    int captureTargetEntryIdx = -1;
+    std::string keybindStatusMsg;
+
+    struct PendingKeyTapRelease {
+        std::vector<std::string> combo;
+        float remainingSec = 0.0f;
+    };
+    std::vector<PendingKeyTapRelease> pendingKeyTapReleases;
+    std::vector<std::vector<std::string>> prevHeldKeyCombos;
+
     bool vrMouseHasPrevUV = false;
     il2vr::VrHand prevVrMouseHand = il2vr::VrHand::Right;
     float prevVrMouseU = 0.5f;
@@ -1248,11 +1295,6 @@ int main(int argc, char** argv) {
     uint32_t prevIl2Pid = 0;
     auto lastDragCommitTime = Clock::now() - std::chrono::seconds(1);
     auto prevFrameTime = Clock::now();
-    bool prevLeftMenuBtn = false;
-    bool prevLeftStickBtn = false;
-    bool prevRightStickBtn = false;
-    il2vr::TripleClickDetector leftTripleClick(0.45f);
-    il2vr::TripleClickDetector rightTripleClick(0.45f);
 
     auto saveCurrentSettings = [&]() {
         appSettings.locale = locale.activeLocaleCode();
@@ -1271,6 +1313,9 @@ int main(int argc, char** argv) {
         appSettings.vrMouseScreenManualYawDeg = vrMouseScreenManualYawDeg;
         appSettings.vrMouseScreenPitchDeg = vrMouseScreenPitchDeg;
         appSettings.vrMouseFreeGripDrag = vrMouseFreeGripDrag;
+        appSettings.activeKeybindProfileId = activeKeybindProfile.id;
+        appSettings.showControllerCallouts = showControllerCallouts;
+        appSettings.showCompanionInCallouts = showCompanionInCallouts;
         appSettings.haptics = hapticsMixer.config();
         saveAppSettings(settingsPath, appSettings);
     };
@@ -1623,6 +1668,17 @@ int main(int argc, char** argv) {
             }
         }
 
+        // Release any active keyboard taps whose short hold window just elapsed.
+        for (size_t idx = 0; idx < pendingKeyTapReleases.size();) {
+            pendingKeyTapReleases[idx].remainingSec -= dtSeconds;
+            if (pendingKeyTapReleases[idx].remainingSec <= 0.0f) {
+                il2vr::KeyboardInjector::sendKeyComboState(pendingKeyTapReleases[idx].combo, false);
+                pendingKeyTapReleases.erase(pendingKeyTapReleases.begin() + static_cast<ptrdiff_t>(idx));
+            } else {
+                ++idx;
+            }
+        }
+
         if (vr.isInitialized() && vrState.runtimeRunning) {
             if (!seat.hasOriginalBackup()) {
                 seat.captureOriginalBackup();
@@ -1631,54 +1687,114 @@ int main(int argc, char** argv) {
                 seat.setInitialHmdRawPose(vrState.hmdRawPose);
             }
 
-            // Left controller Y button (k_EButton_ApplicationMenu) -> Recenter origin to head pose.
-            const bool leftMenuNow = vrState.left.valid && vrState.left.menuBtn;
-            if (leftMenuNow && !prevLeftMenuBtn && vrState.hmdValid) {
-                if (seat.recenterFromRawHmdPose(vrState.hmdRawPose)) {
-                    vrState = vr.pollState();
-                    vrMouseScreenAnchored = false;
-                    lastHotkeyAction = "Origem recentralizada na cabeca (Botao Y)";
-                    if (!hudCustomPlaced) {
-                        pendingHudReanchor = showVrHud;
-                    }
-                    vr.triggerHapticPulse(il2vr::VrHand::Left, 3000);
-                    playBeepAsync(1040, 65);
+            bool leftGripNow = vrState.left.valid && vrState.left.grip;
+            bool rightGripNow = vrState.right.valid && vrState.right.grip;
+            latestVJoyButtonsMask = 0;
+
+            if (bindingEngine.isCapturing()) {
+                const il2vr::VrCaptureResult cap = bindingEngine.pollCapture(vrState, dtSeconds);
+                if (cap.completed && captureTargetEntryIdx >= 0 &&
+                    captureTargetEntryIdx < static_cast<int>(activeKeybindProfile.entries.size()) &&
+                    !activeKeybindProfile.isImmutableDefault) {
+                    auto& targetEntry = activeKeybindProfile.entries[static_cast<size_t>(captureTargetEntryIdx)];
+                    targetEntry.trigger = cap.trigger;
+                    targetEntry.enabled = true;
+                    targetEntry.showInCallout = true;
+                    keybindStatusMsg = "Captured: " + il2vr::formatTriggerSummary(cap.trigger, locale.activeLocaleCode() == "pt-BR");
+                    captureTargetEntryIdx = -1;
+                    vr.triggerHapticPulse(cap.trigger.primary.hand, 2200);
+                } else if (!bindingEngine.isCapturing() && captureTargetEntryIdx >= 0) {
+                    keybindStatusMsg = "Capture timed out.";
+                    captureTargetEntryIdx = -1;
                 }
-            }
-            prevLeftMenuBtn = leftMenuNow;
+            } else {
+                const bool suppressWeapons = vrMouseMode || originGrabModeEnabled || anchorEditMode
+                    || hudGrabActive || (showVrHud && vrHudWasHit);
+                const bool leftRayOnHud = showVrHud && vrHudWasHit && preferredRayHand == il2vr::VrHand::Left;
+                const il2vr::VrBindingEvalResult eval = bindingEngine.update(
+                    vrState,
+                    activeKeybindProfile,
+                    dtSeconds,
+                    suppressWeapons,
+                    leftRayOnHud);
 
-            // Left thumbstick triple-click (3x L3) -> Toggle VR HUD overlay.
-            const bool leftStickNow = vrState.left.valid && vrState.left.secondaryBtn;
-            const bool l3Triple = leftTripleClick.update(leftStickNow, dtSeconds);
-            if (l3Triple) {
-                toggleVrHud("3x L3");
-                vr.triggerHapticPulse(il2vr::VrHand::Left, 2600);
-            } else if (leftStickNow && !prevLeftStickBtn && leftTripleClick.clickCount() > 0) {
-                vr.triggerHapticPulse(il2vr::VrHand::Left, 650);
-            }
-            prevLeftStickBtn = leftStickNow;
+                if (eval.pulseLeft && eval.pulseLeftUs > 0) {
+                    vr.triggerHapticPulse(il2vr::VrHand::Left, eval.pulseLeftUs);
+                }
+                if (eval.pulseRight && eval.pulseRightUs > 0) {
+                    vr.triggerHapticPulse(il2vr::VrHand::Right, eval.pulseRightUs);
+                }
+                if (eval.toggleHud) {
+                    toggleVrHud("Keybind");
+                }
+                if (eval.toggleOriginMode) {
+                    toggleOriginGrabMode();
+                }
+                if (eval.recenterSeat && vrState.hmdValid) {
+                    if (seat.recenterFromRawHmdPose(vrState.hmdRawPose)) {
+                        vrState = vr.pollState();
+                        vrMouseScreenAnchored = false;
+                        lastHotkeyAction = "Origem recentralizada na cabeca (Hold L3)";
+                        if (!hudCustomPlaced) {
+                            pendingHudReanchor = showVrHud;
+                        }
+                        playBeepAsync(1040, 65);
+                    }
+                }
+                if (eval.toggleVrMouse) {
+                    setVrMouseMode(!vrMouseMode, true, "Hold R3");
+                }
+                if (eval.toggleCalloutLayer) {
+                    showControllerCallouts = !showControllerCallouts;
+                    saveCurrentSettings();
+                }
 
-            // Right thumbstick triple-click (3x R3) -> Toggle Flight <-> Edit VR Origin 3D.
-            const bool rightStickNow = vrState.right.valid && vrState.right.secondaryBtn;
-            const bool r3Triple = rightTripleClick.update(rightStickNow, dtSeconds);
-            if (r3Triple) {
-                toggleOriginGrabMode();
-            } else if (rightStickNow && !prevRightStickBtn && rightTripleClick.clickCount() > 0) {
-                vr.triggerHapticPulse(il2vr::VrHand::Right, 650);
-            }
-            prevRightStickBtn = rightStickNow;
+                // Honor rebound flight grips if configured, falling back to physical grip only when unbound.
+                auto hasBoundCompanion = [&](il2vr::CompanionActionId act) {
+                    for (const auto& e : activeKeybindProfile.entries) {
+                        if (e.enabled && e.outputType == il2vr::ActionOutputType::CompanionAction &&
+                            e.companionAction == act && e.trigger.hasInput()) {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+                if (hasBoundCompanion(il2vr::CompanionActionId::FlightStickHold)) {
+                    rightGripNow = eval.stickGripHeld;
+                }
+                if (hasBoundCompanion(il2vr::CompanionActionId::FlightThrottleHold)) {
+                    leftGripNow = eval.throttleGripHeld;
+                }
 
-            // Left controller X button -> Toggle VR Raycaster Mouse in IL-2 Menus (unless clicking HUD with left ray).
-            const bool leftPrimaryNow = vrState.left.valid && vrState.left.primaryBtn;
-            const bool leftRayOnHud = showVrHud && vrHudWasHit && preferredRayHand == il2vr::VrHand::Left;
-            if (leftPrimaryNow && !prevLeftPrimaryBtn && !leftRayOnHud) {
-                setVrMouseMode(!vrMouseMode, true, "Botao X");
-                vr.triggerHapticPulse(il2vr::VrHand::Left, 2200);
-            }
-            prevLeftPrimaryBtn = leftPrimaryNow;
+                latestVJoyButtonsMask = eval.vjoyButtonsMask;
 
-            const bool leftGripNow = vrState.left.valid && vrState.left.grip;
-            const bool rightGripNow = vrState.right.valid && vrState.right.grip;
+                if (!eval.lastTriggeredLabel.empty()) {
+                    lastHotkeyAction = eval.lastTriggeredLabel;
+                }
+
+                // Dispatch non-blocking IL-2 keyboard taps cleanly.
+                for (const auto& combo : eval.keyCombosTapped) {
+                    il2vr::KeyboardInjector::sendKeyComboState(combo, true);
+                    pendingKeyTapReleases.push_back({combo, 0.045f});
+                }
+
+                // Sync continuous held keyboard combos (press newly held, release unheld).
+                for (const auto& oldCombo : prevHeldKeyCombos) {
+                    const bool stillHeld = std::find(eval.keyCombosHeld.begin(), eval.keyCombosHeld.end(), oldCombo)
+                        != eval.keyCombosHeld.end();
+                    if (!stillHeld) {
+                        il2vr::KeyboardInjector::sendKeyComboState(oldCombo, false);
+                    }
+                }
+                for (const auto& newCombo : eval.keyCombosHeld) {
+                    const bool wasHeld = std::find(prevHeldKeyCombos.begin(), prevHeldKeyCombos.end(), newCombo)
+                        != prevHeldKeyCombos.end();
+                    if (!wasHeld) {
+                        il2vr::KeyboardInjector::sendKeyComboState(newCombo, true);
+                    }
+                }
+                prevHeldKeyCombos = eval.keyCombosHeld;
+            }
 
             auto rawPosOf = [](const il2vr::ControllerState& c) -> il2vr::Vec3 {
                 return {c.rawPose.m[0][3], c.rawPose.m[1][3], c.rawPose.m[2][3]};
@@ -1970,13 +2086,13 @@ int main(int argc, char** argv) {
                 }
             }
         } else {
-            prevLeftMenuBtn = false;
-            prevLeftStickBtn = false;
-            prevRightStickBtn = false;
-            prevLeftPrimaryBtn = false;
             vrMouseHasPrevUV = false;
-            leftTripleClick.reset();
-            rightTripleClick.reset();
+            bindingEngine.reset();
+            latestVJoyButtonsMask = 0;
+            for (const auto& oldCombo : prevHeldKeyCombos) {
+                il2vr::KeyboardInjector::sendKeyComboState(oldCombo, false);
+            }
+            prevHeldKeyCombos.clear();
             spaceDragActive = false;
             vtolStickGrabbed = false;
             vtolThrottleGrabbed = false;
@@ -2429,23 +2545,31 @@ int main(int argc, char** argv) {
                 mouseCursorPressed,
                 grabBarHoverMove,
                 grabBarHoverClose);
+            if (showControllerCallouts) {
+                const il2vr::CalloutScene calloutScene = il2vr::ControllerCalloutLayout::buildScene(
+                    activeKeybindProfile,
+                    vrState,
+                    locale.activeLocaleCode() == "pt-BR",
+                    showCompanionInCallouts);
+                vr.updateControllerCalloutOverlays(true, calloutScene, eyePos);
+            } else {
+                vr.updateControllerCalloutOverlays(false, {}, eyePos);
+            }
             vrHudWasHit = vrHudHit.has_value();
 
             if (autoBindAxis == AutoBindAxis::None && !originGrabModeEnabled && !anchorEditMode
                 && !hudGrabActive && !vrMouseMode && mirrorVrControllers && vjoy.isAcquired()) {
-                const bool rightBlockedByHud =
-                    showVrHud && vrHudHit.has_value() && activeRayHand == il2vr::VrHand::Right;
-                const bool leftBlockedByHud =
-                    showVrHud && vrHudHit.has_value() && activeRayHand == il2vr::VrHand::Left;
-                vjoy.setButton(1, !rightBlockedByHud && vrState.right.valid && vrState.right.triggerClick);
-                vjoy.setButton(2, !rightBlockedByHud && vrState.right.valid && vrState.right.primaryBtn);
-                vjoy.setButton(3, !leftBlockedByHud && vrState.left.valid && vrState.left.triggerClick);
+                for (uint8_t btn = 1; btn <= 16; ++btn) {
+                    const bool pressed = (latestVJoyButtonsMask & static_cast<uint16_t>(1u << (btn - 1u))) != 0;
+                    vjoy.setButton(btn, pressed);
+                }
             } else if (mirrorVrControllers && vjoy.isAcquired()) {
-                vjoy.setButton(1, false);
-                vjoy.setButton(2, false);
-                vjoy.setButton(3, false);
+                for (uint8_t btn = 1; btn <= 16; ++btn) {
+                    vjoy.setButton(btn, false);
+                }
             }
         } else {
+            vr.updateControllerCalloutOverlays(false, {}, {});
             vr.updateMouseScreenOverlays(
                 false,
                 vrMouseScreenPose,
@@ -2508,6 +2632,367 @@ int main(int argc, char** argv) {
         const float halfW = std::max(300.0f, (canvas.x - 24.0f) * 0.5f);
         const float fullH = std::max(300.0f, canvas.y - 52.0f);
 
+        if (hudScreen == HudScreen::KeybindsEditor) {
+            ImGui::SetNextWindowPos(ImVec2(8.0f, 8.0f), ImGuiCond_Always);
+            ImGui::SetNextWindowSize(ImVec2(canvas.x - 16.0f, fullH), ImGuiCond_Always);
+            const std::string kbWinTitle = std::string(locale.tr("kb.title", "Editor de Keybinds & Perfis dos Controles VR")) + "###KeybindsEditor";
+            ImGui::Begin(
+                kbWinTitle.c_str(),
+                nullptr,
+                ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse);
+
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.42f, 0.72f, 1.0f));
+            if (ImGui::Button(locale.tr("btn.back_to_hud", "<- Voltar ao Painel Principal"), ImVec2(230.0f, 30.0f))) {
+                bindingEngine.cancelCapture();
+                captureTargetEntryIdx = -1;
+                hudScreen = HudScreen::MainDebug;
+            }
+            ImGui::PopStyleColor();
+            ImGui::SameLine();
+
+            if (ImGui::Checkbox(locale.tr("chk.callout_layer", "Mostrar Mapa Visual 3D nos Controles VR"), &showControllerCallouts)) {
+                saveCurrentSettings();
+            }
+            ImGui::SameLine();
+            if (ImGui::Checkbox(locale.tr("chk.callout_companion", "Mostrar Acoes do Companion no Mapa 3D"), &showCompanionInCallouts)) {
+                saveCurrentSettings();
+            }
+
+            // Profile Management Bar
+            ImGui::Separator();
+            ImGui::Text("%s:", locale.tr("kb.profile", "Perfil"));
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(250.0f);
+            const std::string activeNameLabel = activeKeybindProfile.isImmutableDefault
+                ? ("[Global] " + activeKeybindProfile.name)
+                : activeKeybindProfile.name;
+            if (ImGui::BeginCombo("##ProfileCombo", activeNameLabel.c_str())) {
+                for (const auto& prof : keybindStore.profiles()) {
+                    const bool isSel = (prof.id == activeKeybindProfile.id);
+                    const std::string itemLabel = prof.isImmutableDefault
+                        ? ("[Global Immutable] " + prof.name)
+                        : prof.name;
+                    if (ImGui::Selectable((itemLabel + "##" + prof.id).c_str(), isSel)) {
+                        bindingEngine.cancelCapture();
+                        captureTargetEntryIdx = -1;
+                        activeKeybindProfile = prof;
+                        if (!il2InputDir.empty()) {
+                            il2vr::KeybindProfileStore::applyIl2ActionKeyOverrides(activeKeybindProfile, il2InputDir);
+                        }
+                        std::snprintf(renameProfileNameBuf.data(), renameProfileNameBuf.size(), "%s", activeKeybindProfile.name.c_str());
+                        saveCurrentSettings();
+                        keybindStatusMsg = "Perfil ativo: " + activeKeybindProfile.name;
+                    }
+                }
+                ImGui::EndCombo();
+            }
+
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(150.0f);
+            ImGui::InputText("##NewProfName", newProfileNameBuf.data(), newProfileNameBuf.size());
+            ImGui::SameLine();
+            if (ImGui::Button(locale.tr("kb.btn_clone", "Novo / Clonar"))) {
+                il2vr::KeybindProfile cloned = il2vr::KeybindProfileStore::cloneAsEditable(
+                    activeKeybindProfile,
+                    newProfileNameBuf.data());
+                std::string err;
+                if (keybindStore.saveProfile(cloned, err)) {
+                    activeKeybindProfile = *keybindStore.findById(cloned.id);
+                    std::snprintf(renameProfileNameBuf.data(), renameProfileNameBuf.size(), "%s", activeKeybindProfile.name.c_str());
+                    saveCurrentSettings();
+                    keybindStatusMsg = "Novo perfil salvo: " + activeKeybindProfile.name;
+                } else {
+                    keybindStatusMsg = err;
+                }
+            }
+
+            ImGui::BeginDisabled(activeKeybindProfile.isImmutableDefault);
+            ImGui::SameLine();
+            if (ImGui::Button(locale.tr("kb.btn_save", "Salvar"))) {
+                std::string err;
+                if (keybindStore.saveProfile(activeKeybindProfile, err)) {
+                    saveCurrentSettings();
+                    keybindStatusMsg = "Perfil salvo com sucesso!";
+                } else {
+                    keybindStatusMsg = err;
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(locale.tr("kb.btn_reset_global", "Restaurar Global"))) {
+                il2vr::KeybindProfile fresh = il2vr::KeybindProfileStore::builtInGlobalDefault();
+                fresh.id = activeKeybindProfile.id;
+                fresh.name = activeKeybindProfile.name;
+                fresh.isImmutableDefault = false;
+                if (!il2InputDir.empty()) {
+                    il2vr::KeybindProfileStore::applyIl2ActionKeyOverrides(fresh, il2InputDir);
+                }
+                activeKeybindProfile = std::move(fresh);
+                std::string err;
+                keybindStore.saveProfile(activeKeybindProfile, err);
+                keybindStatusMsg = "Restaurado para o Padrao Global!";
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(locale.tr("kb.btn_delete", "Excluir"))) {
+                std::string err;
+                if (keybindStore.deleteProfile(activeKeybindProfile.id, err)) {
+                    activeKeybindProfile = il2vr::KeybindProfileStore::builtInGlobalDefault();
+                    if (!il2InputDir.empty()) {
+                        il2vr::KeybindProfileStore::applyIl2ActionKeyOverrides(activeKeybindProfile, il2InputDir);
+                    }
+                    saveCurrentSettings();
+                    keybindStatusMsg = "Perfil excluido. Retornado ao Padrao Global.";
+                } else {
+                    keybindStatusMsg = err;
+                }
+            }
+            ImGui::EndDisabled();
+
+            ImGui::SameLine();
+            if (ImGui::Button(locale.tr("kb.btn_sync_il2", "Sync IL-2 (.actions)"))) {
+                if (!il2InputDir.empty()) {
+                    il2vr::KeybindProfileStore::applyIl2ActionKeyOverrides(activeKeybindProfile, il2InputDir);
+                    keybindStatusMsg = "Teclas reais importadas de data/input/.actions!";
+                } else {
+                    keybindStatusMsg = "Pasta data/input do IL-2 nao detectada.";
+                }
+            }
+
+            if (activeKeybindProfile.isImmutableDefault) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.80f, 0.28f, 1.0f));
+                ImGui::TextUnformatted(locale.tr("kb.warn_immutable", "Padrao Global e imutavel (somente leitura). Clone para criar um perfil editavel:"));
+                ImGui::PopStyleColor();
+                ImGui::SameLine();
+                if (ImGui::Button(locale.tr("kb.btn_clone_now", "Clonar Global Agora"))) {
+                    il2vr::KeybindProfile cloned = il2vr::KeybindProfileStore::cloneAsEditable(
+                        activeKeybindProfile,
+                        newProfileNameBuf.data());
+                    std::string err;
+                    if (keybindStore.saveProfile(cloned, err)) {
+                        activeKeybindProfile = *keybindStore.findById(cloned.id);
+                        std::snprintf(renameProfileNameBuf.data(), renameProfileNameBuf.size(), "%s", activeKeybindProfile.name.c_str());
+                        saveCurrentSettings();
+                        keybindStatusMsg = "Perfil editavel criado: " + activeKeybindProfile.name;
+                    }
+                }
+            } else {
+                ImGui::SetNextItemWidth(220.0f);
+                if (renameProfileNameBuf[0] == '\0') {
+                    std::snprintf(renameProfileNameBuf.data(), renameProfileNameBuf.size(), "%s", activeKeybindProfile.name.c_str());
+                }
+                if (ImGui::InputText("Nome##RenameProf", renameProfileNameBuf.data(), renameProfileNameBuf.size())) {
+                    activeKeybindProfile.name = renameProfileNameBuf.data();
+                }
+            }
+
+            if (!keybindStatusMsg.empty()) {
+                ImGui::SameLine();
+                ImGui::TextColored(ImVec4(0.45f, 0.92f, 0.65f, 1.0f), "| %s", keybindStatusMsg.c_str());
+            }
+
+            // Capture Banner
+            if (bindingEngine.isCapturing()) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.90f, 0.20f, 1.0f));
+                ImGui::TextUnformatted(locale.tr("kb.capture_banner", "APERTE 1 BOTAO OU 2 BOTOES JUNTOS NO QUEST 3 AGORA... (Escutando)"));
+                ImGui::PopStyleColor();
+                ImGui::SameLine();
+                if (ImGui::SmallButton(locale.tr("kb.btn_cancel_capture", "Cancelar Captura"))) {
+                    bindingEngine.cancelCapture();
+                    captureTargetEntryIdx = -1;
+                }
+            }
+
+            const auto conflicts = il2vr::KeybindProfileStore::findConflicts(activeKeybindProfile);
+            if (!conflicts.empty()) {
+                ImGui::TextColored(
+                    ImVec4(1.0f, 0.55f, 0.25f, 1.0f),
+                    "Conflitos detectados: %zu par(es) com a mesma combinacao VR.",
+                    conflicts.size());
+            }
+
+            // Category Filter & Search
+            ImGui::Separator();
+            auto catBtn = [&](const char* label, int tabVal) {
+                const bool active = (keybindsCategoryTab == tabVal);
+                if (active) {
+                    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.16f, 0.55f, 0.36f, 1.0f));
+                }
+                if (ImGui::Button(label)) {
+                    keybindsCategoryTab = tabVal;
+                }
+                if (active) {
+                    ImGui::PopStyleColor();
+                }
+            };
+            catBtn(locale.tr("kb.cat_main", "Principais (Aviao)"), 0);
+            ImGui::SameLine();
+            catBtn(locale.tr("kb.cat_companion", "Companion VR"), 1);
+            ImGui::SameLine();
+            catBtn(locale.tr("kb.cat_engine", "Motor, Trim & Sistemas"), 2);
+            ImGui::SameLine();
+            catBtn(locale.tr("kb.cat_all", "Todos"), 3);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(220.0f);
+            ImGui::InputTextWithHint("##KbFilter", locale.tr("kb.filter_hint", "Buscar acao, botao VR ou tecla..."), keybindsFilterBuf.data(), keybindsFilterBuf.size());
+
+            const bool isPt = (locale.activeLocaleCode() == "pt-BR");
+            std::string filterLower(keybindsFilterBuf.data());
+            std::transform(filterLower.begin(), filterLower.end(), filterLower.begin(), [](unsigned char c) {
+                return static_cast<char>(std::tolower(c));
+            });
+
+            auto isConflictingIdx = [&](size_t idx) -> bool {
+                for (const auto& c : conflicts) {
+                    if (c.entryIndexA == idx || c.entryIndexB == idx) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+
+            const float tableAvailH = std::max(160.0f, ImGui::GetContentRegionAvail().y - 6.0f);
+            if (ImGui::BeginTable(
+                    "##KeybindsTable",
+                    4,
+                    ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable,
+                    ImVec2(0.0f, tableAvailH))) {
+                ImGui::TableSetupScrollFreeze(0, 1);
+                ImGui::TableSetupColumn(locale.tr("kb.col_action", "Acao"), ImGuiTableColumnFlags_WidthFixed, 235.0f);
+                ImGui::TableSetupColumn(locale.tr("kb.col_vr", "Entrada VR & Modo"), ImGuiTableColumnFlags_WidthStretch, 1.3f);
+                ImGui::TableSetupColumn(locale.tr("kb.col_output", "Saida / Destino"), ImGuiTableColumnFlags_WidthStretch, 0.9f);
+                ImGui::TableSetupColumn(locale.tr("kb.chk_3d", "3D"), ImGuiTableColumnFlags_WidthFixed, 44.0f);
+                ImGui::TableHeadersRow();
+
+                for (size_t i = 0; i < activeKeybindProfile.entries.size(); ++i) {
+                    auto& entry = activeKeybindProfile.entries[i];
+                    if (keybindsCategoryTab == 0 && entry.category != il2vr::ActionCategory::MainFlight) continue;
+                    if (keybindsCategoryTab == 1 && entry.category != il2vr::ActionCategory::CompanionVr) continue;
+                    if (keybindsCategoryTab == 2 && entry.category != il2vr::ActionCategory::EngineSystems) continue;
+
+                    const std::string& dispName = (isPt && !entry.labelPt.empty()) ? entry.labelPt : entry.labelEn;
+                    const std::string trigLabel = il2vr::formatTriggerSummary(entry.trigger, isPt);
+                    const std::string keyLabel = il2vr::formatKeyComboLabel(entry.keyCombo);
+
+                    if (!filterLower.empty()) {
+                        std::string hay = dispName + " " + entry.actionId + " " + trigLabel + " " + keyLabel;
+                        std::transform(hay.begin(), hay.end(), hay.begin(), [](unsigned char c) {
+                            return static_cast<char>(std::tolower(c));
+                        });
+                        if (hay.find(filterLower) == std::string::npos) {
+                            continue;
+                        }
+                    }
+
+                    ImGui::PushID(static_cast<int>(i));
+                    ImGui::TableNextRow();
+                    const bool hasConf = isConflictingIdx(i);
+
+                    // Col 0: Action Name & Enable
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::BeginDisabled(activeKeybindProfile.isImmutableDefault);
+                    ImGui::Checkbox("##En", &entry.enabled);
+                    ImGui::EndDisabled();
+                    ImGui::SameLine();
+                    if (hasConf) {
+                        ImGui::TextColored(ImVec4(1.0f, 0.60f, 0.25f, 1.0f), "%s%s", (entry.priorityRank <= 16 ? "* " : ""), dispName.c_str());
+                    } else if (entry.category == il2vr::ActionCategory::MainFlight) {
+                        ImGui::TextColored(ImVec4(0.55f, 0.95f, 0.72f, 1.0f), "* %s", dispName.c_str());
+                    } else {
+                        ImGui::TextUnformatted(dispName.c_str());
+                    }
+
+                    // Col 1: VR Input + Capture + Clear + Mode Selector
+                    ImGui::TableSetColumnIndex(1);
+                    if (captureTargetEntryIdx == static_cast<int>(i) && bindingEngine.isCapturing()) {
+                        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.20f, 1.0f), "[Escutando VR...]");
+                    } else {
+                        ImGui::TextUnformatted(trigLabel.c_str());
+                    }
+                    ImGui::BeginDisabled(activeKeybindProfile.isImmutableDefault);
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton(locale.tr("kb.btn_capture", "Capturar VR"))) {
+                        captureTargetEntryIdx = static_cast<int>(i);
+                        bindingEngine.startCapture(entry.trigger.gesture, entry.trigger.holdSeconds);
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton(locale.tr("kb.btn_clear", "Limpar"))) {
+                        entry.trigger = il2vr::KeybindTrigger{};
+                    }
+                    if (entry.trigger.hasInput()) {
+                        const char* gestureNames[] = {"1x Toque", "2x Clique", "3x Clique", "Segurar (Hold)", "Enquanto Segurado"};
+                        int gIdx = static_cast<int>(entry.trigger.gesture);
+                        ImGui::SetNextItemWidth(135.0f);
+                        if (ImGui::Combo("##Gest", &gIdx, gestureNames, IM_ARRAYSIZE(gestureNames))) {
+                            entry.trigger.gesture = static_cast<il2vr::VrGesture>(gIdx);
+                            if (entry.trigger.gesture == il2vr::VrGesture::LongHold && entry.trigger.holdSeconds < 0.20f) {
+                                entry.trigger.holdSeconds = 0.60f;
+                            }
+                        }
+                        if (entry.trigger.gesture == il2vr::VrGesture::LongHold) {
+                            ImGui::SameLine();
+                            ImGui::SetNextItemWidth(85.0f);
+                            ImGui::SliderFloat("##HoldS", &entry.trigger.holdSeconds, 0.25f, 1.50f, "%.2fs");
+                        }
+                    }
+                    ImGui::EndDisabled();
+
+                    // Col 2: Target Output
+                    ImGui::TableSetColumnIndex(2);
+                    if (entry.outputType == il2vr::ActionOutputType::CompanionAction) {
+                        ImGui::TextColored(ImVec4(0.45f, 0.82f, 1.0f, 1.0f), "Companion VR");
+                    } else {
+                        ImGui::BeginDisabled(activeKeybindProfile.isImmutableDefault);
+                        int outMode = (entry.outputType == il2vr::ActionOutputType::VJoyButton) ? 1 : 0;
+                        ImGui::SetNextItemWidth(95.0f);
+                        if (ImGui::Combo("##OutMode", &outMode, "Tecla IL-2\0vJoy Btn\0")) {
+                            entry.outputType = (outMode == 1)
+                                ? il2vr::ActionOutputType::VJoyButton
+                                : il2vr::ActionOutputType::Il2KeyboardCombo;
+                            if (entry.outputType == il2vr::ActionOutputType::VJoyButton && entry.vjoyButton == 0) {
+                                entry.vjoyButton = 4;
+                            }
+                        }
+                        ImGui::SameLine();
+                        if (entry.outputType == il2vr::ActionOutputType::VJoyButton) {
+                            int vj = static_cast<int>(entry.vjoyButton);
+                            ImGui::SetNextItemWidth(75.0f);
+                            if (ImGui::InputInt("##VJB", &vj, 1, 1)) {
+                                entry.vjoyButton = static_cast<uint8_t>(std::clamp(vj, 1, 16));
+                            }
+                        } else {
+                            std::string kStr = il2vr::formatKeyComboLabel(entry.keyCombo);
+                            if (kStr == "--") kStr.clear();
+                            char kBuf[64]{};
+                            std::snprintf(kBuf, sizeof(kBuf), "%s", kStr.c_str());
+                            ImGui::SetNextItemWidth(120.0f);
+                            if (ImGui::InputText("##KeyStr", kBuf, sizeof(kBuf))) {
+                                std::vector<std::string> parsed;
+                                std::istringstream kss(kBuf);
+                                std::string tok;
+                                while (std::getline(kss, tok, '+')) {
+                                    std::string clean;
+                                    for (unsigned char ch : tok) {
+                                        if (!std::isspace(ch)) clean.push_back(static_cast<char>(std::tolower(ch)));
+                                    }
+                                    if (!clean.empty()) parsed.push_back(clean);
+                                }
+                                entry.keyCombo = std::move(parsed);
+                            }
+                        }
+                        ImGui::EndDisabled();
+                    }
+
+                    // Col 3: Callout Layer toggle
+                    ImGui::TableSetColumnIndex(3);
+                    ImGui::BeginDisabled(activeKeybindProfile.isImmutableDefault);
+                    ImGui::Checkbox("##3d", &entry.showInCallout);
+                    ImGui::EndDisabled();
+
+                    ImGui::PopID();
+                }
+                ImGui::EndTable();
+            }
+            ImGui::End();
+        } else {
         ImGui::SetNextWindowPos(ImVec2(8.0f, 8.0f), ImGuiCond_Always);
         ImGui::SetNextWindowSize(ImVec2(halfW, fullH), ImGuiCond_Always);
         const std::string winP1Title = std::string(locale.tr("win.p1.title", "Pilar 1 - Posicionamento & Origem IL-2")) + "###Pilar1";
@@ -2542,12 +3027,22 @@ int main(int argc, char** argv) {
         const std::string mouseBtnLabel = std::string(locale.tr(
             vrMouseMode ? "btn.mouse_vr_on" : "btn.mouse_vr_off",
             vrMouseMode
-                ? "MOUSE VR NOS MENUS: ATIVO (Gatilho=Clique) [Botao X]"
-                : "ATIVAR MOUSE VR NOS MENUS DO JOGO [Botao X Esq]")) + "###MouseModeBtn";
+                ? "MOUSE VR NOS MENUS: ATIVO (Gatilho=Clique) [Segurar R3]"
+                : "ATIVAR MOUSE VR NOS MENUS DO JOGO [Segurar R3]")) + "###MouseModeBtn";
         if (ImGui::Button(mouseBtnLabel.c_str(), ImVec2(-1.0f, 32.0f))) {
             setVrMouseMode(!vrMouseMode, true, "HUD");
         }
         ImGui::PopStyleColor(2);
+
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.24f, 0.38f, 0.62f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.34f, 0.52f, 0.80f, 1.0f));
+        if (ImGui::Button((std::string(locale.tr("btn.open_keybinds", "Editor de Controles & Keybinds (Perfis)")) + "###OpenKbBtn").c_str(), ImVec2(-1.0f, 30.0f))) {
+            hudScreen = HudScreen::KeybindsEditor;
+        }
+        ImGui::PopStyleColor(2);
+        if (ImGui::Checkbox(locale.tr("chk.callout_layer", "Mostrar Mapa Visual 3D nos Controles VR"), &showControllerCallouts)) {
+            saveCurrentSettings();
+        }
 
         if (!sendInputAccessible) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.35f, 0.30f, 1.0f));
@@ -2910,6 +3405,9 @@ int main(int argc, char** argv) {
 
             const std::string tabGizmoTitle = std::string(locale.tr("tab.gizmo_mouse", "Gizmo 3D & Mouse")) + "###TabGizmo";
             if (ImGui::BeginTabItem(tabGizmoTitle.c_str())) {
+                if (ImGui::Checkbox(locale.tr("chk.callout_layer", "Mostrar Mapa Visual 3D nos Controles VR"), &showControllerCallouts)) {
+                    saveCurrentSettings();
+                }
                 if (ImGui::Checkbox(locale.tr("chk.hand_gizmo", "Mostrar Flechas & Gizmo de Rotacao das Maos (3D)"), &showHandGizmo)) {
                     saveCurrentSettings();
                 }
@@ -3199,6 +3697,7 @@ int main(int argc, char** argv) {
             ImGui::EndTabBar();
         }
         ImGui::End();
+        }
 
         // Bottom Quest 3-style HUD Grab Bar (hold Trigger or Grip on this bar to move panel in 3D space).
         ImGui::SetNextWindowPos(ImVec2(8.0f, fullH + 12.0f), ImGuiCond_Always);
@@ -3310,6 +3809,12 @@ int main(int argc, char** argv) {
         }
     }
 
+    for (const auto& tap : pendingKeyTapReleases) {
+        il2vr::KeyboardInjector::sendKeyComboState(tap.combo, false);
+    }
+    for (const auto& held : prevHeldKeyCombos) {
+        il2vr::KeyboardInjector::sendKeyComboState(held, false);
+    }
     if (prevVrMouseLeft) {
         il2vr::KeyboardInjector::sendMouseButton(true, false);
     }

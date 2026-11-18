@@ -19,7 +19,11 @@ add_library(il2vr_core STATIC
     src/core/LocaleManager.cpp
     src/core/MathTypes.cpp
     src/vr/OpenVrBackend.cpp
+    src/vr/ControllerCalloutLayout.cpp
     src/seat/SeatManager.cpp
+    src/input/Il2ActionsCatalog.cpp
+    src/input/KeybindProfileStore.cpp
+    src/input/VrInputBindingEngine.cpp
     src/output/VJoyClient.cpp
     src/output/KeyboardInjector.cpp
     src/telemetry/TelemetryListener.cpp
@@ -43,6 +47,7 @@ target_link_libraries(il2vr_core
         ${OPENVR_LIBRARY}
         ws2_32
         user32
+        gdi32
 )
 
 target_compile_definitions(il2vr_core

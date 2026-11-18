@@ -1,7 +1,9 @@
 #pragma once
 
+#include "vr/ControllerCalloutLayout.h"
 #include "vr/IVrBackend.h"
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -80,6 +82,10 @@ public:
         bool cursorPressed,
         bool grabBarHoverMove = false,
         bool grabBarHoverClose = false);
+    void updateControllerCalloutOverlays(
+        bool visible,
+        const CalloutScene& scene,
+        const Vec3& viewerSeatedPos);
 
 private:
     void createHudOverlay();
@@ -90,6 +96,8 @@ private:
     void destroyGizmoOverlays();
     void createMouseOverlays();
     void destroyMouseOverlays();
+    void createCalloutOverlays();
+    void destroyCalloutOverlays();
     void applyGrabBarTexture(bool hoverMove, bool hoverClose);
     void applyHudTransform();
 
@@ -104,6 +112,10 @@ private:
     uint64_t mouseScreenOverlayHandle_ = 0;
     uint64_t mouseCursorOverlayHandle_ = 0;
     uint64_t mouseGrabBarOverlayHandle_ = 0;
+    std::array<uint64_t, ControllerCalloutLayout::kMaxPins> calloutPinHandles_{};
+    std::array<uint64_t, ControllerCalloutLayout::kMaxLines> calloutLineHandles_{};
+    std::array<uint64_t, ControllerCalloutLayout::kMaxCards> calloutCardHandles_{};
+    std::array<std::string, ControllerCalloutLayout::kMaxCards> calloutCardCacheKeys_{};
     bool grabBarHoverMove_ = false;
     bool grabBarHoverClose_ = false;
     bool overlayVisible_ = true;

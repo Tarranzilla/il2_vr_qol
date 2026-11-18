@@ -129,6 +129,7 @@ bool OpenVrBackend::init(bool allowAutoLaunch) {
         createLaserOverlay();
         createGizmoOverlays();
         createMouseOverlays();
+        createCalloutOverlays();
         return true;
     }
 
@@ -141,6 +142,7 @@ bool OpenVrBackend::init(bool allowAutoLaunch) {
         createLaserOverlay();
         createGizmoOverlays();
         createMouseOverlays();
+        createCalloutOverlays();
         return true;
     }
 
@@ -150,6 +152,7 @@ bool OpenVrBackend::init(bool allowAutoLaunch) {
 }
 
 void OpenVrBackend::shutdown() {
+    destroyCalloutOverlays();
     destroyMouseOverlays();
     destroyGizmoOverlays();
     destroyLaserOverlay();
@@ -902,33 +905,20 @@ void OpenVrBackend::updateMouseScreenOverlays(
     }
 }
 
-void OpenVrBackend::updateLaserOverlay(
-    bool visible,
+bool buildSegmentBeamPose(
     const Vec3& startSeated,
     const Vec3& endSeated,
-    const Vec3& viewerSeatedPos) {
-    if (laserOverlayHandle_ == 0) {
-        return;
-    }
-    auto* overlay = vr::VROverlay();
-    if (overlay == nullptr) {
-        return;
-    }
-
-    if (!visible) {
-        overlay->HideOverlay(laserOverlayHandle_);
-        return;
-    }
-
+    const Vec3& viewerSeatedPos,
+    Mat34& outPose,
+    float& outLen) {
     const Vec3 diff{
         endSeated.x - startSeated.x,
         endSeated.y - startSeated.y,
         endSeated.z - startSeated.z
     };
     const float len = std::sqrt(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
-    if (len < 0.02f) {
-        overlay->HideOverlay(laserOverlayHandle_);
-        return;
+    if (len < 0.015f) {
+        return false;
     }
 
     const Vec3 axisX{diff.x / len, diff.y / len, diff.z / len};
@@ -951,10 +941,38 @@ void OpenVrBackend::updateLaserOverlay(
     const Vec3 axisY = normalizeVec(rawY, {0.0f, 1.0f, 0.0f});
     const Vec3 axisZ = normalizeVec(crossVec(axisX, axisY), {0.0f, 0.0f, 1.0f});
 
+    outPose = Mat34{};
+    outPose.m[0][0] = axisX.x; outPose.m[0][1] = axisY.x; outPose.m[0][2] = axisZ.x; outPose.m[0][3] = mid.x;
+    outPose.m[1][0] = axisX.y; outPose.m[1][1] = axisY.y; outPose.m[1][2] = axisZ.y; outPose.m[1][3] = mid.y;
+    outPose.m[2][0] = axisX.z; outPose.m[2][1] = axisY.z; outPose.m[2][2] = axisZ.z; outPose.m[2][3] = mid.z;
+    outLen = len;
+    return true;
+}
+
+void OpenVrBackend::updateLaserOverlay(
+    bool visible,
+    const Vec3& startSeated,
+    const Vec3& endSeated,
+    const Vec3& viewerSeatedPos) {
+    if (laserOverlayHandle_ == 0) {
+        return;
+    }
+    auto* overlay = vr::VROverlay();
+    if (overlay == nullptr) {
+        return;
+    }
+
+    if (!visible) {
+        overlay->HideOverlay(laserOverlayHandle_);
+        return;
+    }
+
     Mat34 beamPose{};
-    beamPose.m[0][0] = axisX.x; beamPose.m[0][1] = axisY.x; beamPose.m[0][2] = axisZ.x; beamPose.m[0][3] = mid.x;
-    beamPose.m[1][0] = axisX.y; beamPose.m[1][1] = axisY.y; beamPose.m[1][2] = axisZ.y; beamPose.m[1][3] = mid.y;
-    beamPose.m[2][0] = axisX.z; beamPose.m[2][1] = axisY.z; beamPose.m[2][2] = axisZ.z; beamPose.m[2][3] = mid.z;
+    float len = 0.0f;
+    if (!buildSegmentBeamPose(startSeated, endSeated, viewerSeatedPos, beamPose, len)) {
+        overlay->HideOverlay(laserOverlayHandle_);
+        return;
+    }
 
     const vr::HmdMatrix34_t ovrBeam = toOvr(beamPose);
     overlay->SetOverlayWidthInMeters(laserOverlayHandle_, len);
@@ -963,6 +981,363 @@ void OpenVrBackend::updateLaserOverlay(
         vr::TrackingUniverseStanding,
         &ovrBeam);
     overlay->ShowOverlay(laserOverlayHandle_);
+}
+
+namespace {
+
+std::wstring utf8ToWide(const std::string& s) {
+    if (s.empty()) {
+        return L"";
+    }
+    const int needed = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
+    if (needed <= 1) {
+        return L"";
+    }
+    std::wstring out(static_cast<size_t>(needed), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, out.data(), needed);
+    out.pop_back();
+    return out;
+}
+
+void renderCalloutCardRgba(
+    const CalloutCardSpec& card,
+    std::vector<uint8_t>& outRgba,
+    uint32_t& outW,
+    uint32_t& outH) {
+    outW = 480;
+    outH = 128;
+    outRgba.assign(static_cast<size_t>(outW) * outH * 4u, 0);
+
+    HDC screenDc = GetDC(nullptr);
+    HDC memDc = CreateCompatibleDC(screenDc);
+    BITMAPINFO bmi{};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = static_cast<LONG>(outW);
+    bmi.bmiHeader.biHeight = -static_cast<LONG>(outH); // top-down DIB
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    void* bits = nullptr;
+    HBITMAP bmp = CreateDIBSection(memDc, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    if (bmp == nullptr || bits == nullptr) {
+        if (bmp != nullptr) {
+            DeleteObject(bmp);
+        }
+        DeleteDC(memDc);
+        ReleaseDC(nullptr, screenDc);
+        return;
+    }
+
+    HGDIOBJ oldBmp = SelectObject(memDc, bmp);
+
+    // Fill rounded card background & crisp border.
+    const COLORREF bgCol = RGB(14, 22, 34);
+    const COLORREF borderCol = card.isTwoButton ? RGB(245, 165, 35) : (card.isCompanion ? RGB(56, 189, 248) : RGB(74, 222, 128));
+    HBRUSH bgBrush = CreateSolidBrush(bgCol);
+    HPEN borderPen = CreatePen(PS_SOLID, 4, borderCol);
+    HGDIOBJ oldBrush = SelectObject(memDc, bgBrush);
+    HGDIOBJ oldPen = SelectObject(memDc, borderPen);
+    RoundRect(memDc, 2, 2, static_cast<int>(outW) - 2, static_cast<int>(outH) - 2, 24, 24);
+
+    // Mode pill top-right.
+    const COLORREF pillCol = card.isTwoButton ? RGB(150, 88, 12) : (card.isCompanion ? RGB(20, 92, 138) : RGB(22, 108, 62));
+    HBRUSH pillBrush = CreateSolidBrush(pillCol);
+    HPEN pillPen = CreatePen(PS_SOLID, 2, borderCol);
+    SelectObject(memDc, pillBrush);
+    SelectObject(memDc, pillPen);
+    RoundRect(memDc, 250, 12, static_cast<int>(outW) - 14, 52, 14, 14);
+
+    SetBkMode(memDc, TRANSPARENT);
+    HFONT titleFont = CreateFontW(30, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    HFONT subFont = CreateFontW(23, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    HFONT pillFont = CreateFontW(20, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+
+    HGDIOBJ oldFont = SelectObject(memDc, titleFont);
+    SetTextColor(memDc, RGB(242, 248, 255));
+    RECT rTitle{18, 14, 244, 62};
+    const std::wstring wTitle = utf8ToWide(card.title);
+    DrawTextW(memDc, wTitle.c_str(), -1, &rTitle, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+
+    SelectObject(memDc, pillFont);
+    SetTextColor(memDc, RGB(255, 250, 230));
+    RECT rPill{254, 14, static_cast<LONG>(outW) - 18, 50};
+    const std::wstring wMode = utf8ToWide(card.modeBadge);
+    DrawTextW(memDc, wMode.c_str(), -1, &rPill, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+
+    SelectObject(memDc, subFont);
+    SetTextColor(memDc, card.isTwoButton ? RGB(255, 215, 130) : RGB(155, 225, 255));
+    RECT rSub{18, 68, static_cast<LONG>(outW) - 18, 114};
+    const std::wstring wSub = utf8ToWide(card.inputLabel + "  ->  " + card.outputLabel);
+    DrawTextW(memDc, wSub.c_str(), -1, &rSub, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+
+    GdiFlush();
+
+    // Convert BGRA DIB -> OpenVR RGBA with clean rounded-rectangle corner alpha.
+    const uint8_t* src = static_cast<const uint8_t*>(bits);
+    const float hw = static_cast<float>(outW) * 0.5f - 2.0f;
+    const float hh = static_cast<float>(outH) * 0.5f - 2.0f;
+    const float radius = 12.0f;
+    for (uint32_t y = 0; y < outH; ++y) {
+        const float py = std::fabs(static_cast<float>(y) + 0.5f - static_cast<float>(outH) * 0.5f) - (hh - radius);
+        for (uint32_t x = 0; x < outW; ++x) {
+            const float px = std::fabs(static_cast<float>(x) + 0.5f - static_cast<float>(outW) * 0.5f) - (hw - radius);
+            const float qx = std::max(px, 0.0f);
+            const float qy = std::max(py, 0.0f);
+            const float dist = std::sqrt(qx * qx + qy * qy) - radius;
+
+            const size_t idx = (static_cast<size_t>(y) * outW + static_cast<size_t>(x)) * 4u;
+            const uint8_t b = src[idx + 0];
+            const uint8_t g = src[idx + 1];
+            const uint8_t r = src[idx + 2];
+            uint8_t a = 0;
+            if (dist <= 0.0f) {
+                a = 242;
+            } else if (dist < 1.5f) {
+                a = static_cast<uint8_t>(242.0f * (1.0f - dist / 1.5f));
+            }
+            outRgba[idx + 0] = r;
+            outRgba[idx + 1] = g;
+            outRgba[idx + 2] = b;
+            outRgba[idx + 3] = a;
+        }
+    }
+
+    SelectObject(memDc, oldFont);
+    DeleteObject(titleFont);
+    DeleteObject(subFont);
+    DeleteObject(pillFont);
+    SelectObject(memDc, oldBrush);
+    SelectObject(memDc, oldPen);
+    DeleteObject(bgBrush);
+    DeleteObject(borderPen);
+    DeleteObject(pillBrush);
+    DeleteObject(pillPen);
+    SelectObject(memDc, oldBmp);
+    DeleteObject(bmp);
+    DeleteDC(memDc);
+    ReleaseDC(nullptr, screenDc);
+}
+
+} // namespace
+
+void OpenVrBackend::createCalloutOverlays() {
+    auto* overlay = vr::VROverlay();
+    if (overlay == nullptr) {
+        return;
+    }
+
+    // 1. Glowing circular dot texture for button pins (24x24).
+    constexpr uint32_t kPinSz = 24;
+    std::vector<uint8_t> pinPx(kPinSz * kPinSz * 4u, 0);
+    for (uint32_t y = 0; y < kPinSz; ++y) {
+        for (uint32_t x = 0; x < kPinSz; ++x) {
+            const float dx = static_cast<float>(x) + 0.5f - static_cast<float>(kPinSz) * 0.5f;
+            const float dy = static_cast<float>(y) + 0.5f - static_cast<float>(kPinSz) * 0.5f;
+            const float rDist = std::sqrt(dx * dx + dy * dy);
+            const size_t idx = (static_cast<size_t>(y) * kPinSz + x) * 4u;
+            if (rDist <= 6.5f) {
+                pinPx[idx + 0] = 255;
+                pinPx[idx + 1] = 255;
+                pinPx[idx + 2] = 255;
+                pinPx[idx + 3] = 245;
+            } else if (rDist <= 10.5f) {
+                const float t = 1.0f - (rDist - 6.5f) / 4.0f;
+                pinPx[idx + 0] = 255;
+                pinPx[idx + 1] = 255;
+                pinPx[idx + 2] = 255;
+                pinPx[idx + 3] = static_cast<uint8_t>(180.0f * t);
+            }
+        }
+    }
+
+    for (size_t i = 0; i < calloutPinHandles_.size(); ++i) {
+        if (calloutPinHandles_[i] != 0) {
+            continue;
+        }
+        vr::VROverlayHandle_t h = vr::k_ulOverlayHandleInvalid;
+        const std::string key = "il2vr.qol.callout.pin." + std::to_string(i);
+        if (overlay->CreateOverlay(key.c_str(), key.c_str(), &h) == vr::VROverlayError_None &&
+            h != vr::k_ulOverlayHandleInvalid) {
+            calloutPinHandles_[i] = h;
+            overlay->SetOverlayWidthInMeters(h, 0.015f);
+            overlay->SetOverlayInputMethod(h, vr::VROverlayInputMethod_None);
+            overlay->SetOverlayRaw(h, pinPx.data(), kPinSz, kPinSz, 4);
+            overlay->HideOverlay(h);
+        }
+    }
+
+    // 2. Leader line beam texture (512x4 white tintable hairline ~2mm thick at 25cm length).
+    constexpr uint32_t kLineW = 512;
+    constexpr uint32_t kLineH = 4;
+    std::vector<uint8_t> linePx(kLineW * kLineH * 4u, 255);
+    for (uint32_t y = 0; y < kLineH; ++y) {
+        const uint8_t a = (y == 1 || y == 2) ? 235 : 95;
+        for (uint32_t x = 0; x < kLineW; ++x) {
+            const size_t idx = (static_cast<size_t>(y) * kLineW + x) * 4u;
+            linePx[idx + 3] = a;
+        }
+    }
+
+    for (size_t i = 0; i < calloutLineHandles_.size(); ++i) {
+        if (calloutLineHandles_[i] != 0) {
+            continue;
+        }
+        vr::VROverlayHandle_t h = vr::k_ulOverlayHandleInvalid;
+        const std::string key = "il2vr.qol.callout.line." + std::to_string(i);
+        if (overlay->CreateOverlay(key.c_str(), key.c_str(), &h) == vr::VROverlayError_None &&
+            h != vr::k_ulOverlayHandleInvalid) {
+            calloutLineHandles_[i] = h;
+            overlay->SetOverlayWidthInMeters(h, 0.15f);
+            overlay->SetOverlayAlpha(h, 0.90f);
+            overlay->SetOverlayInputMethod(h, vr::VROverlayInputMethod_None);
+            overlay->SetOverlayRaw(h, linePx.data(), kLineW, kLineH, 4);
+            overlay->HideOverlay(h);
+        }
+    }
+
+    // 3. Callout card overlay slots.
+    for (size_t i = 0; i < calloutCardHandles_.size(); ++i) {
+        calloutCardCacheKeys_[i].clear();
+        if (calloutCardHandles_[i] != 0) {
+            continue;
+        }
+        vr::VROverlayHandle_t h = vr::k_ulOverlayHandleInvalid;
+        const std::string key = "il2vr.qol.callout.card." + std::to_string(i);
+        if (overlay->CreateOverlay(key.c_str(), key.c_str(), &h) == vr::VROverlayError_None &&
+            h != vr::k_ulOverlayHandleInvalid) {
+            calloutCardHandles_[i] = h;
+            overlay->SetOverlayWidthInMeters(h, 0.165f);
+            overlay->SetOverlayAlpha(h, 0.96f);
+            overlay->SetOverlayInputMethod(h, vr::VROverlayInputMethod_None);
+            overlay->HideOverlay(h);
+        }
+    }
+}
+
+void OpenVrBackend::destroyCalloutOverlays() {
+    auto* overlay = vr::VROverlay();
+    const auto destroyArr = [&](auto& arr) {
+        for (auto& handle : arr) {
+            if (handle != 0) {
+                if (overlay != nullptr) {
+                    overlay->DestroyOverlay(handle);
+                }
+                handle = 0;
+            }
+        }
+    };
+    destroyArr(calloutPinHandles_);
+    destroyArr(calloutLineHandles_);
+    destroyArr(calloutCardHandles_);
+    for (auto& k : calloutCardCacheKeys_) {
+        k.clear();
+    }
+}
+
+void OpenVrBackend::updateControllerCalloutOverlays(
+    bool visible,
+    const CalloutScene& scene,
+    const Vec3& viewerSeatedPos) {
+    auto* overlay = vr::VROverlay();
+    if (overlay == nullptr) {
+        return;
+    }
+
+    if (!visible) {
+        for (const auto h : calloutPinHandles_) if (h != 0) overlay->HideOverlay(h);
+        for (const auto h : calloutLineHandles_) if (h != 0) overlay->HideOverlay(h);
+        for (const auto h : calloutCardHandles_) if (h != 0) overlay->HideOverlay(h);
+        return;
+    }
+
+    // 1. Pins facing viewer.
+    for (size_t i = 0; i < calloutPinHandles_.size(); ++i) {
+        const uint64_t h = calloutPinHandles_[i];
+        if (h == 0) {
+            continue;
+        }
+        if (i >= scene.pins.size()) {
+            overlay->HideOverlay(h);
+            continue;
+        }
+        const auto& pin = scene.pins[i];
+        const Vec3 toEye = normalizeVec(
+            {viewerSeatedPos.x - pin.worldPos.x, viewerSeatedPos.y - pin.worldPos.y, viewerSeatedPos.z - pin.worldPos.z},
+            {0.0f, 0.0f, 1.0f});
+        const Vec3 right = normalizeVec(crossVec({0.0f, 1.0f, 0.0f}, toEye), {1.0f, 0.0f, 0.0f});
+        const Vec3 up = normalizeVec(crossVec(toEye, right), {0.0f, 1.0f, 0.0f});
+        Mat34 pinPose{};
+        pinPose.m[0][0] = right.x; pinPose.m[0][1] = up.x; pinPose.m[0][2] = toEye.x; pinPose.m[0][3] = pin.worldPos.x;
+        pinPose.m[1][0] = right.y; pinPose.m[1][1] = up.y; pinPose.m[1][2] = toEye.y; pinPose.m[1][3] = pin.worldPos.y;
+        pinPose.m[2][0] = right.z; pinPose.m[2][1] = up.z; pinPose.m[2][2] = toEye.z; pinPose.m[2][3] = pin.worldPos.z;
+        const vr::HmdMatrix34_t ovrMat = toOvr(pinPose);
+        const float r = static_cast<float>((pin.rgbaColor >> 16) & 0xFFu) / 255.0f;
+        const float g = static_cast<float>((pin.rgbaColor >> 8) & 0xFFu) / 255.0f;
+        const float b = static_cast<float>(pin.rgbaColor & 0xFFu) / 255.0f;
+        overlay->SetOverlayColor(h, r, g, b);
+        overlay->SetOverlayTransformAbsolute(h, vr::TrackingUniverseStanding, &ovrMat);
+        overlay->ShowOverlay(h);
+    }
+
+    // 2. Leader lines connecting button pin(s) -> Tarja card border.
+    for (size_t i = 0; i < calloutLineHandles_.size(); ++i) {
+        const uint64_t h = calloutLineHandles_[i];
+        if (h == 0) {
+            continue;
+        }
+        if (i >= scene.lines.size()) {
+            overlay->HideOverlay(h);
+            continue;
+        }
+        const auto& ln = scene.lines[i];
+        Mat34 segPose{};
+        float len = 0.0f;
+        if (!buildSegmentBeamPose(ln.startWorld, ln.endWorld, viewerSeatedPos, segPose, len)) {
+            overlay->HideOverlay(h);
+            continue;
+        }
+        const vr::HmdMatrix34_t ovrBeam = toOvr(segPose);
+        const float r = static_cast<float>((ln.rgbaColor >> 16) & 0xFFu) / 255.0f;
+        const float g = static_cast<float>((ln.rgbaColor >> 8) & 0xFFu) / 255.0f;
+        const float b = static_cast<float>(ln.rgbaColor & 0xFFu) / 255.0f;
+        overlay->SetOverlayColor(h, r, g, b);
+        overlay->SetOverlayWidthInMeters(h, len);
+        overlay->SetOverlayTransformAbsolute(h, vr::TrackingUniverseStanding, &ovrBeam);
+        overlay->ShowOverlay(h);
+    }
+
+    // 3. Callout Tarjas (re-rasterize RGBA texture ONLY when card text/mode changes).
+    for (size_t i = 0; i < calloutCardHandles_.size(); ++i) {
+        const uint64_t h = calloutCardHandles_[i];
+        if (h == 0) {
+            continue;
+        }
+        if (i >= scene.cards.size()) {
+            overlay->HideOverlay(h);
+            continue;
+        }
+        const auto& card = scene.cards[i];
+        const std::string cacheKey =
+            card.entryId + "|" + card.title + "|" + card.inputLabel + "|" + card.modeBadge + "|" + card.outputLabel;
+        if (calloutCardCacheKeys_[i] != cacheKey) {
+            std::vector<uint8_t> rgba;
+            uint32_t w = 0;
+            uint32_t hPx = 0;
+            renderCalloutCardRgba(card, rgba, w, hPx);
+            if (!rgba.empty()) {
+                overlay->SetOverlayRaw(h, rgba.data(), w, hPx, 4);
+                calloutCardCacheKeys_[i] = cacheKey;
+            }
+        }
+        const vr::HmdMatrix34_t ovrCard = toOvr(card.pose);
+        overlay->SetOverlayWidthInMeters(h, card.widthM);
+        overlay->SetOverlayTransformAbsolute(h, vr::TrackingUniverseStanding, &ovrCard);
+        overlay->ShowOverlay(h);
+    }
 }
 
 void OpenVrBackend::setOverlayVisible(bool visible) {

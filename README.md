@@ -1,6 +1,6 @@
-# IL-2 VR QoL Companion (`v0.8.3`)
+# IL-2 VR QoL Companion (`v0.9.0`)
 
-![Version](https://img.shields.io/badge/version-v0.8.3-0ea5e9)
+![Version](https://img.shields.io/badge/version-v0.9.0-0ea5e9)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3%20%2B%20Commercial-blue.svg)](LICENSE)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20v1-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/jvtarran)
 ![Platform](https://img.shields.io/badge/Windows-10%2F11%20x64-0078d4)
@@ -101,17 +101,20 @@ flowchart LR
 |---|---|---|
 | **`3x L3`** *(Left thumbstick triple-click)* | **Open / Close** the floating VR HUD | Anytime |
 | **`3x R3`** *(Right thumbstick triple-click)* | Toggle **6DoF Flight Mode ↔ Edit 3D Origin** | Anytime |
-| **`Y` Button** *(Left controller)* | **Recenter VR Origin** at current head pose | Anytime |
-| **`X` Button** *(Left controller)* | **Toggle VR Raycaster Mouse** over game menus | Menus / Cockpit *(outside HUD)* |
-| **Trigger / `A` / `X`** pointed at HUD | Click buttons, checkboxes & sliders | While HUD is visible |
-| **Trigger / Grip** on **HUD bottom Grab Bar** | **Reposition HUD** in 3D space *(Thumbstick Y adjusts depth)* | While HUD is visible |
-| **`Right Grip`** *(Flight Mode)* | Hold & fly **6DoF Virtual Stick** *(release returns to center)* | In flight |
-| **`Left Grip`** *(Flight Mode)* | Move **Virtual Throttle Lever** *(release latches power with detents)* | In flight |
-| **`Right Trigger` / `Right A`** *(In flight)* | **vJoy Buttons 1 & 2** *(Machine guns / Cannons)* | In flight *(not pointing at HUD)* |
-| **`Left Trigger`** *(In flight)* | **vJoy Button 3** *(Wheel brakes / Aux)* | In flight *(not pointing at HUD)* |
-| **`Left or Right Grip`** *(Edit Origin Mode)* | **Drag cockpit 3D origin** in space *(X/Y/Z only, yaw locked)* | Edit Origin Mode (`3x R3`) |
-| **VR Mouse Screen Icon Bar** *(Move icon / `✕`)* | Reposition flat/curved screen *(Thumbstick Y=dist, X=width)* or Close | VR Mouse Mode (`X`) |
-| **`Trigger` / `Right A` / `Thumbstick Y`** *(VR Mouse)* | **Left Click** / **Right Click** / **Vertical Scroll** in IL-2 menus | VR Mouse Mode (`X`) |
+| **`Hold L3` (`0.65 s`)** | **Recenter VR Origin** at current head pose | Anytime |
+| **`Hold R3` (`0.65 s`)** | **Toggle VR Raycaster Mouse** over game menus | Menus / Cockpit |
+| **`Right Grip` / `Left Grip`** *(Flight)* | Hold **6DoF Virtual Stick** / **Virtual Throttle Lever** | In flight |
+| **`Right Trigger`** *(Held)* | **Fire All Guns** (`vJoy Btn 1`) | In flight |
+| **`Right A`** *(Held / `2x` / `Hold 0.5 s`)* | **Cannons (`vJoy Btn 2`)** / **Drop Bombs (`B`)** / **Rockets (`R`)** | In flight |
+| **`Right B`** *(`1x` / `2x` / `Hold 0.6 s`)* | **Landing Gear (`G`)** / **Airbrakes (`RAlt+B`)** / **Canopy (`RAlt+C`)** | In flight |
+| **`Left Trigger`** *(Held)* | **Wheel Brakes** (`vJoy Btn 3`) | In flight |
+| **`Left X`** *(`1x` / `2x`)* | **Flaps Down (`F`)** / **Flaps Up (`LShift+F`)** | In flight |
+| **`Left Y`** *(`1x` / `Hold 0.6 s`)* | **Parking Brakes (`LShift+/`)** / **Engine Start-Stop (`E`)** | In flight |
+| **`Left X + Left Y`** *(`Hold Together 0.65 s`)* | **Bail Out / Eject (`LCtrl+E`)** *(accidental-safe)* | In flight |
+| **`Right A + Right B`** *(`Together`)* | **Reload All Guns (`LAlt+R`)** | In flight |
+| **`Left Trigger + Right A`** *(`Together`)* | **Bomb Bay Doors (`N`)** | In flight |
+| **Trigger / Grip on HUD bottom Grab Bar** | **Reposition HUD** in 3D space *(Thumbstick Y adjusts depth)* | While HUD is visible |
+| **VR Mouse Screen Icon Bar** *(Move / `✕`)* | Reposition flat/curved screen or Close VR Mouse | VR Mouse Mode (`Hold R3`) |
 
 <details>
 <summary>⌨️ Global Windows Hotkeys (work even while IL-2 has window focus)</summary>
@@ -138,7 +141,7 @@ flowchart LR
 
 - **Why:** On Quest 3 over OpenVR, IL-2 runs in `TrackingUniverseStanding`. Writing `SeatedZeroPose` directly causes `~180°` yaw jumps. `SeatManager` exclusively reads/writes `WorkingStandingZeroPose`, backs up your original SteamVR Chaperone on connect, and translates along the pilot's horizontal facing vector (`Yaw`).
 - **How to use:**
-  1. Sit comfortably and press **`Y` (Left controller)** to snap the cockpit origin to your head.
+  1. Sit comfortably and **hold `L3` (`0.65 s`)** *(or press HUD `Recenter`)* to snap the cockpit origin to your head.
   2. To lean closer to instruments, raise your seat over the cowling, or center laterally: **triple-click Right Thumbstick (`3x R3`)** (confirmed by a haptic pulse -> `EDIT 3D ORIGIN`).
   3. Hold either **`Grip`** in mid-air and drag the world around you (`Yaw` remains locked so the horizon never tilts).
   4. Triple-click **`R3`** again to lock and return to flight.
@@ -197,6 +200,13 @@ Controller 6DoF motion is projected into the pilot's horizontal frame, smoothed 
   - **Rhythmic Engine Pulse (RPM):** Cadenced piston pulse scaled by RPM frequency and manifold pressure / engine shake / power.
   - **Hits / Damage:** Strong punch on impact or structural damage events.
   - **Quick Tests:** `Test Shot`, timed `Test Shake` (`0.45 s` self-stopping impulse), `Test Impact`, and `Stop`, plus [`tools/capture_telemetry.ps1`](tools/capture_telemetry.ps1) for offline `.bin` capture.
+
+#### Keybinds Editor, Custom Profiles & 3D Controller Callout Layer (`v0.9.0`)
+*Core files: [`KeybindProfileStore.h`](src/input/KeybindProfileStore.h), [`VrInputBindingEngine.h`](src/input/VrInputBindingEngine.h), [`Il2ActionsCatalog.h`](src/input/Il2ActionsCatalog.h), [`ControllerCalloutLayout.h`](src/vr/ControllerCalloutLayout.h)*
+
+- **Dedicated Keybinds Screen:** Click **`Controls & Keybinds Editor (Profiles)`** in the main HUD/Debugger to switch to a full-width editor supporting both Companion actions and IL-2 aircraft/systems actions (main actions prioritized first), live **VR input capture** (`1-button` or `2-button simultaneous combos`, `1x Tap`, `2x/3x Sequence`, `Long Hold`, `While Held`), conflict detection, and automatic syncing with your real `data/input/current.actions` / `global.actions`.
+- **Immutable Global Default & Multiple Profiles:** The built-in **`Global Default`** is read-only and immutable in code; clone it to save unlimited custom profiles in `config/profiles/*.json` (with Reset-from-Global anytime).
+- **Toggleable 3D Controller Callout Map:** Enable **`Show 3D Controller Callout Map`** to draw glowing button pins directly on your Quest 3 controllers with **1 or 2 leader lines** converging to floating HMD-facing labels showing each binding, timing mode (`TOGETHER 0.65s`, `2x SEQUENCE`, `TAP 1x`), and output target — layout solved deterministically for **zero label overlap**.
 
 #### Modular Languages (`i18n` — `en-US` & `pt-BR`)
 *Core files: [`LocaleManager.h`](src/core/LocaleManager.h), [`LocaleManager.cpp`](src/core/LocaleManager.cpp), [`config/locales/`](config/locales/)*
@@ -319,17 +329,20 @@ O fluxo principal conecta os controladores e headset **Meta Quest 3** via **Stea
 |---|---|---|
 | **`3x L3`** *(clique triplo analógico Esq)* | **Abrir / Fechar** o painel HUD em VR | Em qualquer momento |
 | **`3x R3`** *(clique triplo analógico Dir)* | Alternar **Modo Voo 6DoF ↔ Ajustar Origem 3D** | Em qualquer momento |
-| **`Botão Y`** *(controle Esquerdo)* | **Recentralizar Origem VR** na pose atual da cabeça | Em qualquer momento |
-| **`Botão X`** *(controle Esquerdo)* | **Ativar / Desativar Mouse VR** nos menus do jogo | Menus / Cockpit *(fora do HUD)* |
-| **Gatilho / `A` / `X`** apontando no HUD | Clicar botões, marcar caixas e arrastar sliders | Com o HUD visível |
-| **Gatilho / Grip** na **barra inferior do HUD** | **Reposicionar o HUD** no espaço 3D *(Analógico Y = distância)* | Com o HUD visível |
-| **`Grip Direito`** *(Modo Voo)* | Segurar/operar **Manche Virtual 6DoF** *(soltar volta ao centro)* | Em voo |
-| **`Grip Esquerdo`** *(Modo Voo)* | Mover **Manete de Potência** *(soltar trava com detentes táteis)* | Em voo |
-| **`Gatilho Direito` / `A Direito`** *(Em voo)* | Botões **vJoy 1 e 2** *(Metralhadoras / Canhões)* | Em voo *(fora do HUD)* |
-| **`Gatilho Esquerdo`** *(Em voo)* | Botão **vJoy 3** *(Freios / auxiliar)* | Em voo *(fora do HUD)* |
-| **`Grip Dir / Esq`** *(Modo Editar Origem)* | **Arrastar a origem 3D do cockpit** *(apenas X/Y/Z, sem girar yaw)* | Modo Origem (`3x R3`) |
-| **Barra de Ícones do Mouse VR** *(Mover / `✕`)* | Reposicionar tela curva/plana *(Analógico Y=dist, X=largura)* ou Fechar | Com Mouse VR ativo (`X`) |
-| **`Gatilho` / `Botão A Dir` / `Analógico Y`** *(Mouse VR)* | **Clique Esquerdo** / **Clique Direito** / **Scroll** nos menus do IL-2 | Com Mouse VR ativo (`X`) |
+| **`Segurar L3` (`0.65 s`)** | **Recentralizar Origem VR** na pose atual da cabeça | Em qualquer momento |
+| **`Segurar R3` (`0.65 s`)** | **Ligar / Desligar Mouse VR** nos menus do jogo | Menus / Cockpit |
+| **`Grip Direito` / `Esquerdo`** *(Modo Voo)* | **Manche Virtual 6DoF** / **Manete de Potência Travada** | Em voo |
+| **`Gatilho Direito`** *(Segurado)* | **Todas as Armas / Metralhadoras** (`vJoy 1`) | Em voo |
+| **`Botão A Dir`** *(Segurado / `2x` / `Segurar 0.5 s`)* | **Canhões (`vJoy 2`)** / **Soltar Bombas (`B`)** / **Foguetes (`R`)** | Em voo |
+| **`Botão B Dir`** *(`1x` / `2x` / `Segurar 0.6 s`)* | **Trem de Pouso (`G`)** / **Freio Aerodinâmico** / **Canopy** | Em voo |
+| **`Gatilho Esquerdo`** *(Segurado)* | **Freios das Rodas** (`vJoy 3`) | Em voo |
+| **`Botão X Esq`** *(`1x` / `2x`)* | **Flaps — Baixar (`F`)** / **Recolher (`LShift+F`)** | Em voo |
+| **`Botão Y Esq`** *(`1x` / `Segurar 0.6 s`)* | **Freio Estacionamento** / **Ligar-Desligar Motor (`E`)** | Em voo |
+| **`X + Y Esq`** *(`Juntos 0.65 s`)* | **Pular de Paraquedas / Ejetar (`LCtrl+E`)** *(protegido)* | Em voo |
+| **`A + B Dir`** *(`Juntos`)* | **Recarregar Armas (`LAlt+R`)** | Em voo |
+| **`Gatilho Esq + A Dir`** *(`Juntos`)* | **Abrir/Fechar Portas de Bombas (`N`)** | Em voo |
+| **Gatilho / Grip na barra inferior do HUD** | **Reposicionar o HUD** no espaço 3D | Com o HUD visível |
+| **Barra de Ícones do Mouse VR** *(Mover / `✕`)* | Reposicionar tela curva/plana ou Fechar Mouse VR | Com Mouse VR ativo |
 
 <details>
 <summary>⌨️ Atalhos Globais de Teclado no Windows (funcionam mesmo com o IL-2 em foco)</summary>
@@ -356,7 +369,7 @@ O fluxo principal conecta os controladores e headset **Meta Quest 3** via **Stea
 
 - **Por que existe:** No Quest 3 via OpenVR, o IL-2 executa em `TrackingUniverseStanding`. Alterar `SeatedZeroPose` mistura sistemas e gera saltos de `~180°`. O `SeatManager` atua exclusivamente em `WorkingStandingZeroPose`, salva backup do Chaperone original na conexão e movimenta relativo à direção horizontal do piloto (`Yaw`).
 - **Como interagir:**
-  1. Sente-se confortável e aperte **`Y` (controle esquerdo)** para centralizar a cabine na sua cabeça.
+  1. Sente-se confortável e **segure `L3` (`0.65 s`)** para centralizar a cabine na sua cabeça.
   2. Para ajustar altura, distância ao painel ou lateralidade: dê **`3x R3`** (`MODO: AJUSTAR ORIGEM 3D`), segure qualquer **`Grip`** no ar para arrastar a origem 3D (`Yaw` travado) e dê outro **`3x R3`** para travar no voo.
 
 #### HUD VR Flutuante & Barra Agarrável Estilo Quest 3
@@ -393,6 +406,13 @@ Movimentos 6DoF projetados no referencial do piloto com **filtros adaptativos On
 
 - Configura automaticamente `[KEY = motiondevice]` e `[KEY = telemetrydevice]` em `data/startup.cfg` (porta UDP `29373`, com backup `.bak_il2vr`), detecta quando o `Il-2.exe` abriu antes da edição do arquivo para avisar sobre o reinício único, e inclui *watchdog* para silenciar vibrações ao pausar/sair para o menu.
 - **Canais independentes na aba `Haptics`** (ligar/desligar e ganho `0.0x–2.0x` separados, priorizando os pulsos da UI): **Master**, **Tremor/Buffet** (estol calibrado, **rolagem na pista em decolagem/pouso**, **curvas alto-G** e variação de aceleração), **Tiros/Armas** (mão do gatilho), **Pulso Rítmico do Motor (RPM)** e **Impactos/Dano**, além dos botões de teste temporizado e captura offline via [`tools/capture_telemetry.ps1`](tools/capture_telemetry.ps1).
+
+#### Editor de Keybinds, Perfis & Layer Visual 3D nos Controles (`v0.9.0`)
+*Arquivos principais: [`KeybindProfileStore.h`](src/input/KeybindProfileStore.h), [`VrInputBindingEngine.h`](src/input/VrInputBindingEngine.h), [`Il2ActionsCatalog.h`](src/input/Il2ActionsCatalog.h), [`ControllerCalloutLayout.h`](src/vr/ControllerCalloutLayout.h)*
+
+- **Tela Dedicada de Keybinds:** Clique em **`Editor de Controles & Keybinds (Perfis)`** no HUD para editar todos os comandos do Companion e do IL-2 (principais no topo), usar captura ao vivo no controle Quest 3 (`Capturar VR`), escolher gestos (`1x`, `2x`, `3x`, `Segurar`, `Segurado`, `2 botões juntos`), detectar conflitos e importar automaticamente seus atalhos reais de `current.actions` / `global.actions`.
+- **Padrão Global Imutável & Múltiplos Perfis:** O perfil **`Global Default (Imutável)`** é protegido em código; clone para salvar quantos perfis customizados quiser em `config/profiles/*.json`.
+- **Layer Visual 3D (Liga/Desliga):** Ative **`Mostrar Mapa Visual 3D nos Controles VR`** para exibir pinos nos botões dos controles com **1 linha ou 2 linhas convergindo** para tarjas explicativas que nunca se sobrepõem!
 
 #### Idiomas Modulares (`i18n` — `en-US` & `pt-BR`)
 *Arquivos principais: [`LocaleManager.h`](src/core/LocaleManager.h), [`LocaleManager.cpp`](src/core/LocaleManager.cpp), [`config/locales/`](config/locales/)*
