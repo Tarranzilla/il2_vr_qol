@@ -2553,7 +2553,7 @@ int main(int argc, char** argv) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.35f, 0.30f, 1.0f));
             ImGui::TextWrapped("%s", locale.tr(
                 "warn.sandbox_sendinput",
-                "AVISO: SendInput bloqueado (processo em sandbox). Feche e abra iniciar_mod_il2_vr.bat pelo Windows Explorer!"));
+                "AVISO: SendInput bloqueado (processo em sandbox). Feche e abra initiate_il2_vr_qol_mod.bat pelo Windows Explorer!"));
             ImGui::PopStyleColor();
         }
 

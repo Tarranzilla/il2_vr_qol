@@ -1,0 +1,125 @@
+================================================================================
+  IL-2 VR QoL Companion (v0.8.3) - Quick Start & User Guide
+  Author: Joao Tarran (Tarranzilla) | GitHub: github.com/Tarranzilla/il2_vr_qol
+  Support v1.0 Goal: https://ko-fi.com/jvtarran
+  License: GNU GPLv3 + Commercial License (see LICENSE & COMMERCIAL_LICENSE.md)
+================================================================================
+
+100% EXTERNAL COMPANION APP:
+- Modifies ZERO IL-2 binary or .gtp game files (multiplayer integrity-check safe).
+- Note for Telemetry Haptics: On first run, the app adds [KEY = motiondevice]
+  and [KEY = telemetrydevice] to IL-2's data\startup.cfg (saving a backup at
+  data\startup.cfg.bak_il2vr). Restart IL-2 once after this first setup.
+
+--------------------------------------------------------------------------------
+[ENGLISH] STEP-BY-STEP QUICK START
+--------------------------------------------------------------------------------
+
+STEP 1 - Install Prerequisites
+  1. Windows 10/11 (64-bit) with SteamVR / OpenVR working (Meta Quest 3 via
+     Quest Link, Air Link, Virtual Desktop, or Steam Link).
+  2. Install vJoy (Device 1 enabled):
+     https://github.com/BrunnerInnovation/vJoy/releases
+  3. Enable all vJoy axes (X, Y, Z, Rz + buttons):
+     - Right-click "repair_vjoy_axis.bat" -> Run as Administrator (once), OR
+       use the red button inside the VR HUD if missing axes are detected.
+
+STEP 2 - Launch Order (IMPORTANT)
+  1. Double-click "initiate_il2_vr_qol_mod.bat" from Windows Explorer.
+     (Must be launched on your normal Windows desktop session so VR Menu Mouse
+     can send mouse events into IL-2).
+  2. Start SteamVR and put on your Quest 3 headset.
+  3. Start "IL-2 Sturmovik: Great Battles" in VR mode.
+     - If IL-2 was ALREADY open before the companion patched data\startup.cfg,
+       close IL-2 and open it once more so UDP telemetry starts streaming.
+
+STEP 3 - Essential Quest 3 Controls
+  * 3x L3 (Triple-click LEFT thumbstick)  : Show / Hide the floating VR HUD
+  * 3x R3 (Triple-click RIGHT thumbstick) : Toggle Flight Mode <-> Edit 3D Origin
+  * Y Button (LEFT controller)            : Recenter VR cockpit seat on your head
+  * X Button (LEFT controller)            : Toggle VR Raycaster Mouse in IL-2 Menus
+  * Hold Trigger / A on HUD widgets       : Click buttons, checkboxes & sliders
+  * Hold HUD bottom Grab Bar              : Move HUD anywhere in 3D space
+                                            (use Thumbstick Up/Down for depth)
+
+  --- In Flight Mode ---
+  * Hold RIGHT Grip : Operate 6DoF Virtual Stick (Pitch/Roll + Wrist Rudder Rz)
+                      Release returns stick to center.
+  * Hold LEFT Grip  : Move Virtual Throttle Lever (release latches power in place,
+                      with subtle haptic detents at 0%, 50%, 100%).
+  * RIGHT Trigger / A : Weapon Fire (vJoy buttons 1 & 2).
+  * LEFT Trigger      : Brakes / Aux (vJoy button 3).
+  * Thumbsticks       : Fine trim / rudder adjustments anytime.
+
+  --- In Edit 3D Origin Mode (3x R3) ---
+  * Hold LEFT or RIGHT Grip : Drag the whole cockpit seat/world origin in 3D
+                              (X/Y/Z translation only, horizon yaw stays locked).
+  * Give another 3x R3      : Lock position and return to flight.
+
+  --- In VR Menu Mouse Mode (X Button) ---
+  * Point laser at the cyan 3D frame over IL-2 menus:
+    - Trigger (Right or Left) : Left Click
+    - A Button (Right)        : Right Click
+    - Thumbstick Up/Down      : Scroll Wheel
+  * Bottom Icon Grab Bar under the screen:
+    - Drag the 4-way Move icon : Reposition screen (+ Thumbstick Y=dist, X=width)
+    - Click the X icon         : Close VR Menu Mouse and unlock weapon triggers
+  * In the HUD tab "3D Gizmo & Mouse" you can lock the screen upright to the
+    floor, pick Yaw mode, tilt Pitch, or curve the virtual screen (0.00 - 0.35).
+
+  --- First-Time Axis Mapping in IL-2 (Auto-Bind) ---
+  1. In IL-2 -> Settings -> Key Mapping, click Pitch, Roll, Yaw, or Throttle.
+  2. Open the VR HUD (3x L3) and click the matching "Bind Roll X / Pitch Y /
+     Throttle Z / Rudder Rz" button in Pillar 2.
+  3. The app performs a clean 4.2s single-axis sweep so IL-2 binds without
+     cross-axis wobble.
+
+  --- Telemetry Haptics (Haptics Tab) ---
+  * Independently toggle and tune strength (0.0x - 2.0x) and hand routing:
+    - Master Enable & Overall Gain
+    - Aircraft Shake / Buffet (stall buffet, runway takeoff roll, high-G turns)
+    - Gunfire / Ordnance Recoil (default: Right / trigger hand)
+    - Rhythmic Engine RPM & Power Pulse
+    - Hits / Damage Impact
+
+TROUBLESHOOTING
+  * "SendInput blocked (sandboxed)": Close the app and launch directly via
+    "initiate_il2_vr_qol_mod.bat" from Windows Explorer.
+  * No haptics in flight: Make sure IL-2 was restarted once after startup.cfg
+    was updated, and turn VR Mouse OFF (X button) when in the cockpit.
+  * Language: Switch between English (en-US) and Portuguese (pt-BR) in the
+    "Languages / Idiomas" tab.
+
+
+================================================================================
+[PORTUGUES BR] GUIA RAPIDO PASSO A PASSO
+================================================================================
+
+PASSO 1 - Pre-requisitos
+  1. Windows 10/11 (64 bits) com SteamVR funcionando (Meta Quest 3 via
+     Quest Link, Air Link, Virtual Desktop ou Steam Link).
+  2. Instale o vJoy (Device 1 ativo):
+     https://github.com/BrunnerInnovation/vJoy/releases
+  3. Ative todos os eixos do vJoy (X, Y, Z, Rz + botoes):
+     - Clique com botao direito em "repair_vjoy_axis.bat" -> Executar como
+       Administrador (uma unica vez), ou use o botao vermelho dentro do HUD.
+
+PASSO 2 - Ordem para Abrir (IMPORTANTE)
+  1. De um duplo clique em "initiate_il2_vr_qol_mod.bat" pelo Windows Explorer.
+  2. Abra o SteamVR e coloque o headset.
+  3. Abra o "IL-2 Sturmovik: Great Battles" em modo VR.
+     - Se o IL-2 JA estava aberto antes de o mod configurar o data\startup.cfg,
+       feche e abra o IL-2 uma vez para iniciar a telemetria UDP.
+
+PASSO 3 - Controles Essenciais no Quest 3
+  * 3x L3 (3 cliques analogico Esq) : Abre / Fecha o painel HUD em VR
+  * 3x R3 (3 cliques analogico Dir) : Alterna Modo Voo <-> Editar Origem 3D
+  * Botao Y (Controle Esquerdo)     : Recentraliza a cabine na sua cabeca
+  * Botao X (Controle Esquerdo)     : Liga / Desliga Mouse VR nos Menus do IL-2
+  * Grip Dir / Esq (Modo Voo)       : Manche 6DoF (soltar centra) / Manete (trava)
+  * Gatilho / Botao A (no voo)      : Tiros (vJoy 1 e 2) / Freios (Gatilho Esq)
+  * Mouse VR (Botao X ativo)        : Gatilho=Clique Esq | A Dir=Clique Dir |
+                                      Analogico Y=Scroll | Barra Inferior=Mover/X
+  * Telemetria e Haptica (aba Haptics): Ligar/desligar e ajustar ganho de
+    Tremor (stall/pista/curva), Tiros, Pulso do Motor (RPM) e Impactos.
+================================================================================

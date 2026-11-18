@@ -57,7 +57,7 @@
     "chk.mouse_vr": "VR Raycaster Mouse in IL-2 Menus",
     "btn.mouse_vr_on": "VR MENU MOUSE: ACTIVE (Trigger=Click) [X Button]",
     "btn.mouse_vr_off": "ENABLE VR MOUSE IN GAME MENUS [Left X Button]",
-    "warn.sandbox_sendinput": "WARNING: SendInput blocked (sandboxed process). Close and run iniciar_mod_il2_vr.bat from Windows Explorer!",
+    "warn.sandbox_sendinput": "WARNING: SendInput blocked (sandboxed process). Close and run initiate_il2_vr_qol_mod.bat from Windows Explorer!",
     "lbl.mouse_hint": "Use the icon grab bar below the screen to move or close [X].",
     "hdr.mouse_screen": "VR Mouse Screen",
     "chk.screen_upright": "Lock perpendicular to floor",

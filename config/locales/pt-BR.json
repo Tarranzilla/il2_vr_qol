@@ -57,7 +57,7 @@
     "chk.mouse_vr": "Mouse VR nos Menus do IL-2 (Raycaster)",
     "btn.mouse_vr_on": "MOUSE VR NOS MENUS: ATIVO (Gatilho=Clique) [Botao X]",
     "btn.mouse_vr_off": "ATIVAR MOUSE VR NOS MENUS DO JOGO [Botao X Esq]",
-    "warn.sandbox_sendinput": "AVISO: SendInput bloqueado (processo em sandbox). Feche e abra iniciar_mod_il2_vr.bat pelo Windows Explorer!",
+    "warn.sandbox_sendinput": "AVISO: SendInput bloqueado (processo em sandbox). Feche e abra initiate_il2_vr_qol_mod.bat pelo Windows Explorer!",
     "lbl.mouse_hint": "Use a barra de icones abaixo da tela para mover ou fechar [X].",
     "hdr.mouse_screen": "Tela do Mouse VR",
     "chk.screen_upright": "Travar perpendicular ao chao",
