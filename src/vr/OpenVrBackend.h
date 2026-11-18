@@ -113,6 +113,7 @@ private:
     uint64_t mouseCursorOverlayHandle_ = 0;
     uint64_t mouseGrabBarOverlayHandle_ = 0;
     std::array<uint64_t, ControllerCalloutLayout::kMaxPins> calloutPinHandles_{};
+    std::array<std::string, ControllerCalloutLayout::kMaxPins> calloutPinCacheKeys_{};
     std::array<uint64_t, ControllerCalloutLayout::kMaxLines> calloutLineHandles_{};
     std::array<uint64_t, ControllerCalloutLayout::kMaxCards> calloutCardHandles_{};
     std::array<std::string, ControllerCalloutLayout::kMaxCards> calloutCardCacheKeys_{};

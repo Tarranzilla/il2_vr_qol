@@ -42,6 +42,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -1245,6 +1246,7 @@ int main(int argc, char** argv) {
     std::array<char, 64> renameProfileNameBuf{};
     int captureTargetEntryIdx = -1;
     std::string keybindStatusMsg;
+    std::unordered_map<std::string, float> calloutActiveTimers;
 
     struct PendingKeyTapRelease {
         std::vector<std::string> combo;
@@ -1690,6 +1692,14 @@ int main(int argc, char** argv) {
             bool leftGripNow = vrState.left.valid && vrState.left.grip;
             bool rightGripNow = vrState.right.valid && vrState.right.grip;
             latestVJoyButtonsMask = 0;
+            for (auto it = calloutActiveTimers.begin(); it != calloutActiveTimers.end();) {
+                it->second -= dtSeconds;
+                if (it->second <= 0.0f) {
+                    it = calloutActiveTimers.erase(it);
+                } else {
+                    ++it;
+                }
+            }
 
             if (bindingEngine.isCapturing()) {
                 const il2vr::VrCaptureResult cap = bindingEngine.pollCapture(vrState, dtSeconds);
@@ -1717,6 +1727,9 @@ int main(int argc, char** argv) {
                     dtSeconds,
                     suppressWeapons,
                     leftRayOnHud);
+                for (const auto& activeId : eval.activeEntryIds) {
+                    calloutActiveTimers[activeId] = 0.45f;
+                }
 
                 if (eval.pulseLeft && eval.pulseLeftUs > 0) {
                     vr.triggerHapticPulse(il2vr::VrHand::Left, eval.pulseLeftUs);
@@ -2546,11 +2559,19 @@ int main(int argc, char** argv) {
                 grabBarHoverMove,
                 grabBarHoverClose);
             if (showControllerCallouts) {
+                std::vector<std::string> activeCalloutIds;
+                activeCalloutIds.reserve(calloutActiveTimers.size());
+                for (const auto& kv : calloutActiveTimers) {
+                    if (kv.second > 0.0f) {
+                        activeCalloutIds.push_back(kv.first);
+                    }
+                }
                 const il2vr::CalloutScene calloutScene = il2vr::ControllerCalloutLayout::buildScene(
                     activeKeybindProfile,
                     vrState,
                     locale.activeLocaleCode() == "pt-BR",
-                    showCompanionInCallouts);
+                    showCompanionInCallouts,
+                    activeCalloutIds);
                 vr.updateControllerCalloutOverlays(true, calloutScene, eyePos);
             } else {
                 vr.updateControllerCalloutOverlays(false, {}, eyePos);

@@ -21,6 +21,7 @@ struct CalloutPin {
     Vec3 worldPos{};
     bool activeHighlight = false;
     uint32_t rgbaColor = 0xFF38BDF8u; // ABGR or ARGB helper
+    std::string shortLabel;
 };
 
 struct CalloutLine {
@@ -28,6 +29,7 @@ struct CalloutLine {
     Vec3 endWorld{};
     uint32_t rgbaColor = 0xFF38BDF8u;
     bool isSecondary = false;
+    bool activeHighlight = false;
 };
 
 struct CalloutCardSpec {
@@ -38,6 +40,8 @@ struct CalloutCardSpec {
     std::string outputLabel;  // Output key/btn (e.g., "G", "vJoy 1", "HUD")
     bool isTwoButton = false;
     bool isCompanion = false;
+    bool activeHighlight = false;
+    bool isUnboundNotice = false;
     CalloutSide side = CalloutSide::Right;
 
     Vec3 centerWorld{};
@@ -58,9 +62,11 @@ struct CalloutScene {
 
 class ControllerCalloutLayout {
 public:
-    static constexpr size_t kMaxCards = 16;
-    static constexpr size_t kMaxLines = 24;
-    static constexpr size_t kMaxPins = 16;
+    static constexpr size_t kMaxCards = 18;
+    static constexpr size_t kMaxLines = 28;
+    static constexpr size_t kMaxPins = 18;
+
+    static std::string shortButtonPinLabel(const VrInputSlot& slot, bool portuguese);
 
     static Vec3 computeButtonWorldPos(
         const Mat34& controllerPose,
@@ -70,7 +76,8 @@ public:
         const KeybindProfile& profile,
         const VrFrameState& vrState,
         bool portuguese,
-        bool showCompanionCards = true);
+        bool showCompanionCards = true,
+        const std::vector<std::string>& activeEntryIds = {});
 
     // Exposed for unit testing strict non-overlapping separation in view-plane (u, v).
     static bool hasAnyCardOverlap(

@@ -1,6 +1,6 @@
-# IL-2 VR QoL Companion (`v0.9.1`)
+# IL-2 VR QoL Companion (`v0.9.2`)
 
-![Version](https://img.shields.io/badge/version-v0.9.1-0ea5e9)
+![Version](https://img.shields.io/badge/version-v0.9.2-0ea5e9)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3%20%2B%20Commercial-blue.svg)](LICENSE)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20v1-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/jvtarran)
 ![Platform](https://img.shields.io/badge/Windows-10%2F11%20x64-0078d4)
@@ -201,12 +201,12 @@ Controller 6DoF motion is projected into the pilot's horizontal frame, smoothed 
   - **Hits / Damage:** Strong punch on impact or structural damage events.
   - **Quick Tests:** `Test Shot`, timed `Test Shake` (`0.45 s` self-stopping impulse), `Test Impact`, and `Stop`, plus [`tools/capture_telemetry.ps1`](tools/capture_telemetry.ps1) for offline `.bin` capture.
 
-#### Keybinds Editor, Custom Profiles & 3D Controller Callout Layer (`v0.9.0`)
+#### Keybinds Editor, Custom Profiles & Live 3D Controller Callout Layer (`v0.9.2`)
 *Core files: [`KeybindProfileStore.h`](src/input/KeybindProfileStore.h), [`VrInputBindingEngine.h`](src/input/VrInputBindingEngine.h), [`Il2ActionsCatalog.h`](src/input/Il2ActionsCatalog.h), [`ControllerCalloutLayout.h`](src/vr/ControllerCalloutLayout.h)*
 
 - **Dedicated Keybinds Screen:** Click **`Controls & Keybinds Editor (Profiles)`** in the main HUD/Debugger to switch to a full-width editor supporting both Companion actions and IL-2 aircraft/systems actions (main actions prioritized first), live **VR input capture** (`1-button` or `2-button simultaneous combos`, `1x Tap`, `2x/3x Sequence`, `Long Hold`, `While Held`), conflict detection, and automatic syncing with your real `data/input/current.actions` / `global.actions`.
 - **Immutable Global Default & Multiple Profiles:** The built-in **`Global Default`** is read-only and immutable in code; clone it to save unlimited custom profiles in `config/profiles/*.json` (with Reset-from-Global anytime).
-- **Toggleable 3D Controller Callout Map:** Enable **`Show 3D Controller Callout Map`** to draw glowing button pins directly on your Quest 3 controllers with **1 or 2 leader lines** converging to floating HMD-facing labels showing each binding, timing mode (`TOGETHER 0.65s`, `2x SEQUENCE`, `TAP 1x`), and output target — layout solved deterministically for **zero label overlap**.
+- **Toggleable Live 3D Controller Callout Map:** Enable **`Show 3D Controller Callout Map`** to render labeled physical button badges (`X`, `Y`, `L3`, `Trig`/`Gatilho`, `Grip`, `A`, `B`, `R3`) on your Quest 3 controllers with **1 or 2 leader lines** converging to wide-spaced floating cards rendered strictly **in front of** the lines (`SetOverlaySortOrder`). Pressed buttons and active/triggered actions light up in gold live; pressing 1 unbound button lights only its badge, while pressing **2+ unbound buttons together** spawns a highlighted 2-line **`No Binding Assigned` / `Sem Bind Configurado`** card connecting them.
 
 #### Modular Languages (`i18n` — `en-US` & `pt-BR`)
 *Core files: [`LocaleManager.h`](src/core/LocaleManager.h), [`LocaleManager.cpp`](src/core/LocaleManager.cpp), [`config/locales/`](config/locales/)*
@@ -407,12 +407,12 @@ Movimentos 6DoF projetados no referencial do piloto com **filtros adaptativos On
 - Configura automaticamente `[KEY = motiondevice]` e `[KEY = telemetrydevice]` em `data/startup.cfg` (porta UDP `29373`, com backup `.bak_il2vr`), detecta quando o `Il-2.exe` abriu antes da edição do arquivo para avisar sobre o reinício único, e inclui *watchdog* para silenciar vibrações ao pausar/sair para o menu.
 - **Canais independentes na aba `Haptics`** (ligar/desligar e ganho `0.0x–2.0x` separados, priorizando os pulsos da UI): **Master**, **Tremor/Buffet** (estol calibrado, **rolagem na pista em decolagem/pouso**, **curvas alto-G** e variação de aceleração), **Tiros/Armas** (mão do gatilho), **Pulso Rítmico do Motor (RPM)** e **Impactos/Dano**, além dos botões de teste temporizado e captura offline via [`tools/capture_telemetry.ps1`](tools/capture_telemetry.ps1).
 
-#### Editor de Keybinds, Perfis & Layer Visual 3D nos Controles (`v0.9.0`)
+#### Editor de Keybinds, Perfis & Layer Visual 3D ao Vivo nos Controles (`v0.9.2`)
 *Arquivos principais: [`KeybindProfileStore.h`](src/input/KeybindProfileStore.h), [`VrInputBindingEngine.h`](src/input/VrInputBindingEngine.h), [`Il2ActionsCatalog.h`](src/input/Il2ActionsCatalog.h), [`ControllerCalloutLayout.h`](src/vr/ControllerCalloutLayout.h)*
 
 - **Tela Dedicada de Keybinds:** Clique em **`Editor de Controles & Keybinds (Perfis)`** no HUD para editar todos os comandos do Companion e do IL-2 (principais no topo), usar captura ao vivo no controle Quest 3 (`Capturar VR`), escolher gestos (`1x`, `2x`, `3x`, `Segurar`, `Segurado`, `2 botões juntos`), detectar conflitos e importar automaticamente seus atalhos reais de `current.actions` / `global.actions`.
 - **Padrão Global Imutável & Múltiplos Perfis:** O perfil **`Global Default (Imutável)`** é protegido em código; clone para salvar quantos perfis customizados quiser em `config/profiles/*.json`.
-- **Layer Visual 3D (Liga/Desliga):** Ative **`Mostrar Mapa Visual 3D nos Controles VR`** para exibir pinos nos botões dos controles com **1 linha ou 2 linhas convergindo** para tarjas explicativas que nunca se sobrepõem!
+- **Layer Visual 3D ao Vivo (Liga/Desliga):** Ative **`Mostrar Mapa Visual 3D nos Controles VR`** para exibir indicadores com o atalho de cada botão (`X`, `Y`, `L3`, `Gatilho`, `Grip`, `A`, `B`, `R3`) no controle, tarjas bem espaçadas sempre **na frente das linhas** (`SetOverlaySortOrder`), acendimento em tempo real do botão segurado e da ação acionada, e um aviso **`Sem Bind Configurado`** ligando 2+ botões pressionados sem bind!
 
 #### Idiomas Modulares (`i18n` — `en-US` & `pt-BR`)
 *Arquivos principais: [`LocaleManager.h`](src/core/LocaleManager.h), [`LocaleManager.cpp`](src/core/LocaleManager.cpp), [`config/locales/`](config/locales/)*

@@ -1,5 +1,5 @@
 ================================================================================
-  IL-2 VR QoL Companion (v0.9.1) - Quick Start & User Guide
+  IL-2 VR QoL Companion (v0.9.2) - Quick Start & User Guide
   Author: Joao Tarran (Tarranzilla) | GitHub: github.com/Tarranzilla/il2_vr_qol
   Support v1.0 Goal: https://ko-fi.com/jvtarran
   License: GNU GPLv3 + Commercial License (see LICENSE & COMMERCIAL_LICENSE.md)
@@ -58,9 +58,12 @@ STEP 4 - Keybinds Editor, Multiple Profiles & 3D Controller Map
   * "Global Default (Immutable)" is read-only; click "Clone Global Now" to
     save custom profiles in config\profiles\ and rebind any button or 2-button
     combo using live "Capture VR".
-  * Toggle "Show 3D Controller Callout Map" in the HUD to display glowing pins
-    on your Quest 3 controller buttons with 1 or 2 lines connecting to clear,
-    non-overlapping floating labels explaining each binding & gesture!
+  * Toggle "Show 3D Controller Callout Map" in the HUD to display labeled button
+    badges (`X`, `Y`, `L3`, `Trig`/`Gatilho`, `Grip`, `A`, `B`, `R3`) on your
+    Quest 3 controllers with non-overlapping floating labels drawn cleanly in
+    front of leader lines. Pressed buttons and active actions light up live in
+    gold, and pressing 2+ unbound buttons shows a highlighted "No Binding
+    Assigned" notice connecting them.
 
 --------------------------------------------------------------------------------
 [PORTUGUES BR] GUIA RAPIDO PASSO A PASSO
@@ -95,6 +98,9 @@ PASSO 2 - Comandos no Quest 3 (Padrao Global Imutavel)
 PASSO 3 - Editor de Keybinds, Perfis & Mapa Visual 3D
   * Clique em "Editor de Controles & Keybinds (Perfis)" no HUD para clonar o
     Padrao Global Imutavel e personalizar qualquer comando com "Capturar VR".
-  * Ative "Mostrar Mapa Visual 3D nos Controles VR" para ver linhas ligando
-    cada botao fisico ate tarjas explicativas sem sobreposicao!
+  * Ative "Mostrar Mapa Visual 3D nos Controles VR" para ver os atalhos sobre
+    cada botao fisico (`X`, `Y`, `L3`, `Gatilho`, `Grip`, `A`, `B`, `R3`),
+    tarjas bem espacadas sempre a frente das linhas, acendimento ao vivo dos
+    botoes/acoes pressionados e aviso "Sem Bind Configurado" ao apertar 2+
+    botoes sem comando!
 ================================================================================

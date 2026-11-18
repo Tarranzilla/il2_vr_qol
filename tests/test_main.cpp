@@ -839,3 +839,129 @@ TEST_CASE("ControllerCalloutLayout places all Tarjas without overlap and emits 2
     CHECK(twoButtonCards >= 2);
     CHECK(scene.lines.size() == scene.cards.size() + static_cast<size_t>(twoButtonCards));
 }
+
+TEST_CASE("ControllerCalloutLayout labels pins, lights active inputs/actions, and warns on 2+ unbound buttons", "[keybinds][vr]") {
+    il2vr::KeybindProfile custom{};
+    custom.id = "custom_test";
+    custom.name = "Custom Test";
+
+    il2vr::KeybindEntry entryA{};
+    entryA.id = "test_tap_a";
+    entryA.labelEn = "Gear";
+    entryA.labelPt = "Trem";
+    entryA.outputType = il2vr::ActionOutputType::Il2KeyboardCombo;
+    entryA.keyCombo = {"g"};
+    entryA.trigger.primary = {il2vr::VrHand::Right, il2vr::VrButtonId::Primary};
+    entryA.trigger.relation = il2vr::VrComboRelation::Single;
+    entryA.trigger.gesture = il2vr::VrGesture::Tap1x;
+
+    il2vr::KeybindEntry entryHud{};
+    entryHud.id = "companion.hud_toggle";
+    entryHud.labelEn = "Hide HUD";
+    entryHud.labelPt = "Ocultar HUD";
+    entryHud.outputType = il2vr::ActionOutputType::CompanionAction;
+    entryHud.companionAction = il2vr::CompanionActionId::ToggleHud;
+    entryHud.trigger.primary = {il2vr::VrHand::Left, il2vr::VrButtonId::ThumbClick};
+    entryHud.trigger.relation = il2vr::VrComboRelation::Single;
+    entryHud.trigger.gesture = il2vr::VrGesture::LongHold;
+    entryHud.trigger.holdSeconds = 0.65f;
+
+    il2vr::KeybindEntry entryRecenter{};
+    entryRecenter.id = "companion.recenter_seat";
+    entryRecenter.labelEn = "Recenter Seat";
+    entryRecenter.labelPt = "Recentralizar";
+    entryRecenter.outputType = il2vr::ActionOutputType::CompanionAction;
+    entryRecenter.companionAction = il2vr::CompanionActionId::RecenterSeat;
+    entryRecenter.trigger.primary = {il2vr::VrHand::Left, il2vr::VrButtonId::ThumbClick};
+    entryRecenter.trigger.secondary = {il2vr::VrHand::Right, il2vr::VrButtonId::ThumbClick};
+    entryRecenter.trigger.relation = il2vr::VrComboRelation::Simultaneous;
+    entryRecenter.trigger.gesture = il2vr::VrGesture::LongHold;
+    entryRecenter.trigger.holdSeconds = 0.65f;
+
+    custom.entries = {entryA, entryHud, entryRecenter};
+
+    il2vr::VrFrameState st{};
+    st.runtimeRunning = true;
+    st.hmdValid = true;
+    st.hmdSeatedPose = il2vr::makeHorizontalPose({0.0f, 1.15f, 0.0f}, 0.0f);
+    st.left.valid = true;
+    st.left.pose = il2vr::makeHorizontalPose({-0.25f, 0.85f, -0.38f}, 0.0f);
+    st.right.valid = true;
+    st.right.pose = il2vr::makeHorizontalPose({0.25f, 0.85f, -0.38f}, 0.0f);
+
+    const auto findPin = [](const il2vr::CalloutScene& sc, il2vr::VrHand h, il2vr::VrButtonId b) -> const il2vr::CalloutPin* {
+        for (const auto& p : sc.pins) {
+            if (p.slot.hand == h && p.slot.button == b) {
+                return &p;
+            }
+        }
+        return nullptr;
+    };
+    const auto findCard = [](const il2vr::CalloutScene& sc, const std::string& id) -> const il2vr::CalloutCardSpec* {
+        for (const auto& c : sc.cards) {
+            if (c.entryId == id) {
+                return &c;
+            }
+        }
+        return nullptr;
+    };
+
+    // 1. Single unbound button (Left Primary / X) lights ONLY that pin, no unbound card spawned.
+    st.left.primaryBtn = true;
+    const il2vr::CalloutScene sc1 = il2vr::ControllerCalloutLayout::buildScene(custom, st, true, true);
+    const auto* pinX = findPin(sc1, il2vr::VrHand::Left, il2vr::VrButtonId::Primary);
+    const auto* pinTrig = findPin(sc1, il2vr::VrHand::Left, il2vr::VrButtonId::Trigger);
+    REQUIRE(pinX != nullptr);
+    REQUIRE(pinTrig != nullptr);
+    CHECK(pinX->shortLabel == "X");
+    CHECK(pinX->activeHighlight);
+    CHECK(pinTrig->shortLabel == "Gatilho");
+    CHECK_FALSE(pinTrig->activeHighlight);
+    CHECK(findCard(sc1, "__unbound_combo__") == nullptr);
+    CHECK_FALSE(findCard(sc1, "test_tap_a")->activeHighlight);
+
+    // 2. Active entry IDs + held slot light up bound card; 2-button combo suppresses single L3 highlight.
+    st.left.primaryBtn = false;
+    st.left.secondaryBtn = true;
+    st.right.secondaryBtn = true;
+    const il2vr::CalloutScene sc2 = il2vr::ControllerCalloutLayout::buildScene(
+        custom, st, true, true, {"test_tap_a"});
+    CHECK(findPin(sc2, il2vr::VrHand::Left, il2vr::VrButtonId::ThumbClick)->activeHighlight);
+    CHECK(findPin(sc2, il2vr::VrHand::Right, il2vr::VrButtonId::ThumbClick)->activeHighlight);
+    CHECK(findCard(sc2, "companion.recenter_seat")->activeHighlight);
+    CHECK_FALSE(findCard(sc2, "companion.hud_toggle")->activeHighlight);
+    CHECK(findCard(sc2, "test_tap_a")->activeHighlight);
+    CHECK(findCard(sc2, "__unbound_combo__") == nullptr);
+
+    // 3. VrInputBindingEngine populates activeEntryIds on trigger activation.
+    il2vr::VrInputBindingEngine engine;
+    il2vr::VrFrameState engSt{};
+    engSt.runtimeRunning = true;
+    engSt.left.valid = true;
+    engSt.right.valid = true;
+    engSt.right.primaryBtn = true;
+    const auto evalTap = engine.update(engSt, custom, 0.02f, false, false);
+    CHECK(std::find(evalTap.activeEntryIds.begin(), evalTap.activeEntryIds.end(), "test_tap_a") !=
+          evalTap.activeEntryIds.end());
+
+    // 4. Two unbound buttons held together spawn highlighted 2-line "No Binding Assigned" notice without overlap.
+    st.left.secondaryBtn = false;
+    st.right.secondaryBtn = false;
+    st.left.primaryBtn = true; // X (unbound)
+    st.right.grip = true;      // Right Grip (unbound)
+    const il2vr::CalloutScene scUnboundPt = il2vr::ControllerCalloutLayout::buildScene(custom, st, true, true);
+    const auto* unboundPt = findCard(scUnboundPt, "__unbound_combo__");
+    REQUIRE(unboundPt != nullptr);
+    CHECK(unboundPt->isUnboundNotice);
+    CHECK(unboundPt->isTwoButton);
+    CHECK(unboundPt->activeHighlight);
+    CHECK(unboundPt->title == "Sem Bind Configurado");
+    CHECK(scUnboundPt.lines.size() == scUnboundPt.cards.size() + 2u); // recenter + unbound_combo have 2 lines each
+    CHECK_FALSE(il2vr::ControllerCalloutLayout::hasAnyCardOverlap(scUnboundPt.cards, st.hmdSeatedPose, 0.015f));
+
+    const il2vr::CalloutScene scUnboundEn = il2vr::ControllerCalloutLayout::buildScene(custom, st, false, true);
+    const auto* unboundEn = findCard(scUnboundEn, "__unbound_combo__");
+    REQUIRE(unboundEn != nullptr);
+    CHECK(unboundEn->title == "No Binding Assigned");
+    CHECK(findPin(scUnboundEn, il2vr::VrHand::Right, il2vr::VrButtonId::Trigger)->shortLabel == "Trig");
+}

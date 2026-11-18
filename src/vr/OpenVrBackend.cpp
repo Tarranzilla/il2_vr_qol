@@ -1032,16 +1032,29 @@ void renderCalloutCardRgba(
     HGDIOBJ oldBmp = SelectObject(memDc, bmp);
 
     // Fill rounded card background & crisp border.
-    const COLORREF bgCol = RGB(14, 22, 34);
-    const COLORREF borderCol = card.isTwoButton ? RGB(245, 165, 35) : (card.isCompanion ? RGB(56, 189, 248) : RGB(74, 222, 128));
+    COLORREF bgCol = RGB(14, 22, 34);
+    COLORREF borderCol = card.isTwoButton ? RGB(245, 165, 35) : (card.isCompanion ? RGB(56, 189, 248) : RGB(74, 222, 128));
+    COLORREF pillCol = card.isTwoButton ? RGB(150, 88, 12) : (card.isCompanion ? RGB(20, 92, 138) : RGB(22, 108, 62));
+    COLORREF subCol = card.isTwoButton ? RGB(255, 215, 130) : RGB(155, 225, 255);
+    if (card.isUnboundNotice) {
+        bgCol = RGB(58, 14, 20);
+        borderCol = RGB(248, 113, 113);
+        pillCol = RGB(185, 28, 28);
+        subCol = RGB(254, 202, 202);
+    } else if (card.activeHighlight) {
+        bgCol = RGB(48, 34, 8);
+        borderCol = RGB(250, 204, 21);
+        pillCol = RGB(202, 138, 4);
+        subCol = RGB(254, 240, 138);
+    }
+    const int penWidth = (card.activeHighlight || card.isUnboundNotice) ? 6 : 4;
     HBRUSH bgBrush = CreateSolidBrush(bgCol);
-    HPEN borderPen = CreatePen(PS_SOLID, 4, borderCol);
+    HPEN borderPen = CreatePen(PS_SOLID, penWidth, borderCol);
     HGDIOBJ oldBrush = SelectObject(memDc, bgBrush);
     HGDIOBJ oldPen = SelectObject(memDc, borderPen);
     RoundRect(memDc, 2, 2, static_cast<int>(outW) - 2, static_cast<int>(outH) - 2, 24, 24);
 
     // Mode pill top-right.
-    const COLORREF pillCol = card.isTwoButton ? RGB(150, 88, 12) : (card.isCompanion ? RGB(20, 92, 138) : RGB(22, 108, 62));
     HBRUSH pillBrush = CreateSolidBrush(pillCol);
     HPEN pillPen = CreatePen(PS_SOLID, 2, borderCol);
     SelectObject(memDc, pillBrush);
@@ -1069,7 +1082,7 @@ void renderCalloutCardRgba(
     DrawTextW(memDc, wMode.c_str(), -1, &rPill, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
 
     SelectObject(memDc, subFont);
-    SetTextColor(memDc, card.isTwoButton ? RGB(255, 215, 130) : RGB(155, 225, 255));
+    SetTextColor(memDc, subCol);
     RECT rSub{18, 68, static_cast<LONG>(outW) - 18, 114};
     const std::wstring wSub = utf8ToWide(card.inputLabel + "  ->  " + card.outputLabel);
     DrawTextW(memDc, wSub.c_str(), -1, &rSub, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
@@ -1122,6 +1135,116 @@ void renderCalloutCardRgba(
     ReleaseDC(nullptr, screenDc);
 }
 
+void renderCalloutPinRgba(
+    const CalloutPin& pin,
+    std::vector<uint8_t>& outRgba,
+    uint32_t& outW,
+    uint32_t& outH) {
+    outW = 112;
+    outH = 44;
+    outRgba.assign(static_cast<size_t>(outW) * outH * 4u, 0);
+
+    HDC screenDc = GetDC(nullptr);
+    HDC memDc = CreateCompatibleDC(screenDc);
+    BITMAPINFO bmi{};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = static_cast<LONG>(outW);
+    bmi.bmiHeader.biHeight = -static_cast<LONG>(outH);
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+
+    void* bits = nullptr;
+    HBITMAP bmp = CreateDIBSection(memDc, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    if (bmp == nullptr || bits == nullptr) {
+        if (bmp != nullptr) {
+            DeleteObject(bmp);
+        }
+        DeleteDC(memDc);
+        ReleaseDC(nullptr, screenDc);
+        return;
+    }
+
+    HGDIOBJ oldBmp = SelectObject(memDc, bmp);
+
+    const uint8_t ar = static_cast<uint8_t>((pin.rgbaColor >> 16) & 0xFFu);
+    const uint8_t ag = static_cast<uint8_t>((pin.rgbaColor >> 8) & 0xFFu);
+    const uint8_t ab = static_cast<uint8_t>(pin.rgbaColor & 0xFFu);
+    const COLORREF accentCol = RGB(ar, ag, ab);
+
+    const COLORREF bgCol = pin.activeHighlight ? RGB(250, 204, 21) : RGB(15, 23, 42);
+    const COLORREF borderCol = pin.activeHighlight ? RGB(255, 251, 235) : accentCol;
+    const COLORREF dotCol = pin.activeHighlight ? RGB(255, 255, 255) : accentCol;
+    const COLORREF textCol = pin.activeHighlight ? RGB(15, 23, 42) : RGB(241, 245, 249);
+
+    HBRUSH bgBrush = CreateSolidBrush(bgCol);
+    HPEN borderPen = CreatePen(PS_SOLID, pin.activeHighlight ? 4 : 3, borderCol);
+    HGDIOBJ oldBrush = SelectObject(memDc, bgBrush);
+    HGDIOBJ oldPen = SelectObject(memDc, borderPen);
+    RoundRect(memDc, 2, 2, static_cast<int>(outW) - 2, static_cast<int>(outH) - 2, 28, 28);
+
+    // Small circular LED button indicator on the left side of the pill.
+    HBRUSH dotBrush = CreateSolidBrush(dotCol);
+    HPEN dotPen = CreatePen(PS_SOLID, 1, pin.activeHighlight ? RGB(202, 138, 4) : accentCol);
+    SelectObject(memDc, dotBrush);
+    SelectObject(memDc, dotPen);
+    Ellipse(memDc, 10, 15, 22, 27);
+
+    SetBkMode(memDc, TRANSPARENT);
+    HFONT pinFont = CreateFontW(21, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
+    HGDIOBJ oldFont = SelectObject(memDc, pinFont);
+    SetTextColor(memDc, textCol);
+    RECT rLabel{24, 3, static_cast<LONG>(outW) - 8, static_cast<LONG>(outH) - 3};
+    const std::wstring wLabel = utf8ToWide(pin.shortLabel);
+    DrawTextW(memDc, wLabel.c_str(), -1, &rLabel, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+
+    GdiFlush();
+
+    const uint8_t* src = static_cast<const uint8_t*>(bits);
+    const float hw = static_cast<float>(outW) * 0.5f - 2.0f;
+    const float hh = static_cast<float>(outH) * 0.5f - 2.0f;
+    const float radius = 16.0f;
+    const float maxAlpha = pin.activeHighlight ? 250.0f : 230.0f;
+    for (uint32_t y = 0; y < outH; ++y) {
+        const float py = std::fabs(static_cast<float>(y) + 0.5f - static_cast<float>(outH) * 0.5f) - (hh - radius);
+        for (uint32_t x = 0; x < outW; ++x) {
+            const float px = std::fabs(static_cast<float>(x) + 0.5f - static_cast<float>(outW) * 0.5f) - (hw - radius);
+            const float qx = std::max(px, 0.0f);
+            const float qy = std::max(py, 0.0f);
+            const float dist = std::sqrt(qx * qx + qy * qy) - radius;
+
+            const size_t idx = (static_cast<size_t>(y) * outW + static_cast<size_t>(x)) * 4u;
+            const uint8_t b = src[idx + 0];
+            const uint8_t g = src[idx + 1];
+            const uint8_t r = src[idx + 2];
+            uint8_t a = 0;
+            if (dist <= 0.0f) {
+                a = static_cast<uint8_t>(maxAlpha);
+            } else if (dist < 1.5f) {
+                a = static_cast<uint8_t>(maxAlpha * (1.0f - dist / 1.5f));
+            }
+            outRgba[idx + 0] = r;
+            outRgba[idx + 1] = g;
+            outRgba[idx + 2] = b;
+            outRgba[idx + 3] = a;
+        }
+    }
+
+    SelectObject(memDc, oldFont);
+    DeleteObject(pinFont);
+    SelectObject(memDc, oldBrush);
+    SelectObject(memDc, oldPen);
+    DeleteObject(bgBrush);
+    DeleteObject(borderPen);
+    DeleteObject(dotBrush);
+    DeleteObject(dotPen);
+    SelectObject(memDc, oldBmp);
+    DeleteObject(bmp);
+    DeleteDC(memDc);
+    ReleaseDC(nullptr, screenDc);
+}
+
 } // namespace
 
 void OpenVrBackend::createCalloutOverlays() {
@@ -1130,32 +1253,11 @@ void OpenVrBackend::createCalloutOverlays() {
         return;
     }
 
-    // 1. Glowing circular dot texture for button pins (24x24).
-    constexpr uint32_t kPinSz = 24;
-    std::vector<uint8_t> pinPx(kPinSz * kPinSz * 4u, 0);
-    for (uint32_t y = 0; y < kPinSz; ++y) {
-        for (uint32_t x = 0; x < kPinSz; ++x) {
-            const float dx = static_cast<float>(x) + 0.5f - static_cast<float>(kPinSz) * 0.5f;
-            const float dy = static_cast<float>(y) + 0.5f - static_cast<float>(kPinSz) * 0.5f;
-            const float rDist = std::sqrt(dx * dx + dy * dy);
-            const size_t idx = (static_cast<size_t>(y) * kPinSz + x) * 4u;
-            if (rDist <= 6.5f) {
-                pinPx[idx + 0] = 255;
-                pinPx[idx + 1] = 255;
-                pinPx[idx + 2] = 255;
-                pinPx[idx + 3] = 245;
-            } else if (rDist <= 10.5f) {
-                const float t = 1.0f - (rDist - 6.5f) / 4.0f;
-                pinPx[idx + 0] = 255;
-                pinPx[idx + 1] = 255;
-                pinPx[idx + 2] = 255;
-                pinPx[idx + 3] = static_cast<uint8_t>(180.0f * t);
-            }
-        }
-    }
-
+    // 1. Physical button shortcut badge overlays (rendered per-pin in updateControllerCalloutOverlays).
     for (size_t i = 0; i < calloutPinHandles_.size(); ++i) {
+        calloutPinCacheKeys_[i].clear();
         if (calloutPinHandles_[i] != 0) {
+            overlay->SetOverlaySortOrder(calloutPinHandles_[i], 20);
             continue;
         }
         vr::VROverlayHandle_t h = vr::k_ulOverlayHandleInvalid;
@@ -1163,9 +1265,10 @@ void OpenVrBackend::createCalloutOverlays() {
         if (overlay->CreateOverlay(key.c_str(), key.c_str(), &h) == vr::VROverlayError_None &&
             h != vr::k_ulOverlayHandleInvalid) {
             calloutPinHandles_[i] = h;
-            overlay->SetOverlayWidthInMeters(h, 0.015f);
+            overlay->SetOverlayWidthInMeters(h, 0.050f);
+            overlay->SetOverlayAlpha(h, 0.96f);
+            overlay->SetOverlaySortOrder(h, 20);
             overlay->SetOverlayInputMethod(h, vr::VROverlayInputMethod_None);
-            overlay->SetOverlayRaw(h, pinPx.data(), kPinSz, kPinSz, 4);
             overlay->HideOverlay(h);
         }
     }
@@ -1184,6 +1287,7 @@ void OpenVrBackend::createCalloutOverlays() {
 
     for (size_t i = 0; i < calloutLineHandles_.size(); ++i) {
         if (calloutLineHandles_[i] != 0) {
+            overlay->SetOverlaySortOrder(calloutLineHandles_[i], 10);
             continue;
         }
         vr::VROverlayHandle_t h = vr::k_ulOverlayHandleInvalid;
@@ -1193,6 +1297,7 @@ void OpenVrBackend::createCalloutOverlays() {
             calloutLineHandles_[i] = h;
             overlay->SetOverlayWidthInMeters(h, 0.15f);
             overlay->SetOverlayAlpha(h, 0.90f);
+            overlay->SetOverlaySortOrder(h, 10);
             overlay->SetOverlayInputMethod(h, vr::VROverlayInputMethod_None);
             overlay->SetOverlayRaw(h, linePx.data(), kLineW, kLineH, 4);
             overlay->HideOverlay(h);
@@ -1203,6 +1308,7 @@ void OpenVrBackend::createCalloutOverlays() {
     for (size_t i = 0; i < calloutCardHandles_.size(); ++i) {
         calloutCardCacheKeys_[i].clear();
         if (calloutCardHandles_[i] != 0) {
+            overlay->SetOverlaySortOrder(calloutCardHandles_[i], 30);
             continue;
         }
         vr::VROverlayHandle_t h = vr::k_ulOverlayHandleInvalid;
@@ -1212,6 +1318,7 @@ void OpenVrBackend::createCalloutOverlays() {
             calloutCardHandles_[i] = h;
             overlay->SetOverlayWidthInMeters(h, 0.165f);
             overlay->SetOverlayAlpha(h, 0.96f);
+            overlay->SetOverlaySortOrder(h, 30);
             overlay->SetOverlayInputMethod(h, vr::VROverlayInputMethod_None);
             overlay->HideOverlay(h);
         }
@@ -1233,6 +1340,9 @@ void OpenVrBackend::destroyCalloutOverlays() {
     destroyArr(calloutPinHandles_);
     destroyArr(calloutLineHandles_);
     destroyArr(calloutCardHandles_);
+    for (auto& k : calloutPinCacheKeys_) {
+        k.clear();
+    }
     for (auto& k : calloutCardCacheKeys_) {
         k.clear();
     }
@@ -1254,7 +1364,7 @@ void OpenVrBackend::updateControllerCalloutOverlays(
         return;
     }
 
-    // 1. Pins facing viewer.
+    // 1. Physical button pins + shortcut badges facing viewer.
     for (size_t i = 0; i < calloutPinHandles_.size(); ++i) {
         const uint64_t h = calloutPinHandles_[i];
         if (h == 0) {
@@ -1265,6 +1375,18 @@ void OpenVrBackend::updateControllerCalloutOverlays(
             continue;
         }
         const auto& pin = scene.pins[i];
+        const std::string pinCacheKey =
+            pin.shortLabel + (pin.activeHighlight ? "|1|" : "|0|") + std::to_string(pin.rgbaColor);
+        if (calloutPinCacheKeys_[i] != pinCacheKey) {
+            std::vector<uint8_t> rgba;
+            uint32_t w = 0;
+            uint32_t hPx = 0;
+            renderCalloutPinRgba(pin, rgba, w, hPx);
+            if (!rgba.empty()) {
+                overlay->SetOverlayRaw(h, rgba.data(), w, hPx, 4);
+                calloutPinCacheKeys_[i] = pinCacheKey;
+            }
+        }
         const Vec3 toEye = normalizeVec(
             {viewerSeatedPos.x - pin.worldPos.x, viewerSeatedPos.y - pin.worldPos.y, viewerSeatedPos.z - pin.worldPos.z},
             {0.0f, 0.0f, 1.0f});
@@ -1275,10 +1397,7 @@ void OpenVrBackend::updateControllerCalloutOverlays(
         pinPose.m[1][0] = right.y; pinPose.m[1][1] = up.y; pinPose.m[1][2] = toEye.y; pinPose.m[1][3] = pin.worldPos.y;
         pinPose.m[2][0] = right.z; pinPose.m[2][1] = up.z; pinPose.m[2][2] = toEye.z; pinPose.m[2][3] = pin.worldPos.z;
         const vr::HmdMatrix34_t ovrMat = toOvr(pinPose);
-        const float r = static_cast<float>((pin.rgbaColor >> 16) & 0xFFu) / 255.0f;
-        const float g = static_cast<float>((pin.rgbaColor >> 8) & 0xFFu) / 255.0f;
-        const float b = static_cast<float>(pin.rgbaColor & 0xFFu) / 255.0f;
-        overlay->SetOverlayColor(h, r, g, b);
+        overlay->SetOverlayWidthInMeters(h, pin.activeHighlight ? 0.054f : 0.050f);
         overlay->SetOverlayTransformAbsolute(h, vr::TrackingUniverseStanding, &ovrMat);
         overlay->ShowOverlay(h);
     }
@@ -1305,12 +1424,13 @@ void OpenVrBackend::updateControllerCalloutOverlays(
         const float g = static_cast<float>((ln.rgbaColor >> 8) & 0xFFu) / 255.0f;
         const float b = static_cast<float>(ln.rgbaColor & 0xFFu) / 255.0f;
         overlay->SetOverlayColor(h, r, g, b);
+        overlay->SetOverlayAlpha(h, ln.activeHighlight ? 0.98f : 0.78f);
         overlay->SetOverlayWidthInMeters(h, len);
         overlay->SetOverlayTransformAbsolute(h, vr::TrackingUniverseStanding, &ovrBeam);
         overlay->ShowOverlay(h);
     }
 
-    // 3. Callout Tarjas (re-rasterize RGBA texture ONLY when card text/mode changes).
+    // 3. Callout Tarjas (re-rasterize RGBA texture ONLY when card text/mode/highlight changes).
     for (size_t i = 0; i < calloutCardHandles_.size(); ++i) {
         const uint64_t h = calloutCardHandles_[i];
         if (h == 0) {
@@ -1322,7 +1442,8 @@ void OpenVrBackend::updateControllerCalloutOverlays(
         }
         const auto& card = scene.cards[i];
         const std::string cacheKey =
-            card.entryId + "|" + card.title + "|" + card.inputLabel + "|" + card.modeBadge + "|" + card.outputLabel;
+            card.entryId + "|" + card.title + "|" + card.inputLabel + "|" + card.modeBadge + "|" + card.outputLabel +
+            (card.activeHighlight ? "|1" : "|0") + (card.isUnboundNotice ? "|U" : "|B");
         if (calloutCardCacheKeys_[i] != cacheKey) {
             std::vector<uint8_t> rgba;
             uint32_t w = 0;
@@ -1334,6 +1455,7 @@ void OpenVrBackend::updateControllerCalloutOverlays(
             }
         }
         const vr::HmdMatrix34_t ovrCard = toOvr(card.pose);
+        overlay->SetOverlayAlpha(h, (card.activeHighlight || card.isUnboundNotice) ? 1.0f : 0.94f);
         overlay->SetOverlayWidthInMeters(h, card.widthM);
         overlay->SetOverlayTransformAbsolute(h, vr::TrackingUniverseStanding, &ovrCard);
         overlay->ShowOverlay(h);

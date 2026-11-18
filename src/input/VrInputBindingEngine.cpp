@@ -69,6 +69,9 @@ void VrInputBindingEngine::dispatchEntryActivation(
     bool suppressWeapons,
     VrBindingEvalResult& out) {
     out.lastTriggeredLabel = entry.labelEn;
+    if (!suppressWeapons || entry.outputType == ActionOutputType::CompanionAction) {
+        out.activeEntryIds.push_back(entry.id);
+    }
     auto pulseHand = [&](VrHand h, uint16_t us) {
         if (h == VrHand::Left) {
             out.pulseLeft = true;
@@ -214,6 +217,9 @@ VrBindingEvalResult VrInputBindingEngine::update(
         switch (entry.trigger.gesture) {
         case VrGesture::WhileHeld:
             if (downNow && (entry.trigger.isTwoButton() || !slotParticipatesInTwoButton(entry.trigger.primary))) {
+                if (!suppressWeapons || entry.outputType == ActionOutputType::CompanionAction) {
+                    out.activeEntryIds.push_back(entry.id);
+                }
                 if (entry.outputType == ActionOutputType::CompanionAction) {
                     if (entry.companionAction == CompanionActionId::FlightStickHold) {
                         out.stickGripHeld = true;

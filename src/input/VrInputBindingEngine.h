@@ -29,6 +29,7 @@ struct VrBindingEvalResult {
     uint16_t pulseLeftUs = 0;
     uint16_t pulseRightUs = 0;
     std::string lastTriggeredLabel;
+    std::vector<std::string> activeEntryIds;
 };
 
 struct VrCaptureResult {

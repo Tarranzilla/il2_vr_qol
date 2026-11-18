@@ -1,8 +1,10 @@
 #include "vr/ControllerCalloutLayout.h"
 
 #include "input/KeybindProfileStore.h"
+#include "input/VrInputBindingEngine.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace il2vr {
@@ -60,8 +62,14 @@ std::string buildOutputBadge(const KeybindEntry& e) {
 }
 
 uint32_t colorForCard(const CalloutCardSpec& c) noexcept {
+    if (c.isUnboundNotice) {
+        return 0xFFEF4444u; // Red-coral warning for unbound multi-button press
+    }
+    if (c.activeHighlight) {
+        return 0xFFFACC15u; // Bright gold highlight when pressed or triggered
+    }
     if (c.isTwoButton) {
-        return 0xFF38BDF8u; // Cyan-amber highlight? Cyan 0xF59E0B or RGB(250, 180, 45)
+        return 0xFF38BDF8u;
     }
     if (c.isCompanion) {
         return 0xFF38BDF8u;
@@ -136,11 +144,31 @@ Vec3 ControllerCalloutLayout::computeButtonWorldPos(
     return transformPointByMat(controllerPose, local);
 }
 
+std::string ControllerCalloutLayout::shortButtonPinLabel(const VrInputSlot& slot, bool portuguese) {
+    if (!slot.isValid()) {
+        return "";
+    }
+    switch (slot.button) {
+    case VrButtonId::Trigger:    return portuguese ? "Gatilho" : "Trig";
+    case VrButtonId::Grip:       return "Grip";
+    case VrButtonId::Primary:    return (slot.hand == VrHand::Left) ? "X" : "A";
+    case VrButtonId::Secondary:  return (slot.hand == VrHand::Left) ? "Y" : "B";
+    case VrButtonId::ThumbClick: return (slot.hand == VrHand::Left) ? "L3" : "R3";
+    case VrButtonId::StickUp:    return portuguese ? "Cima" : "Up";
+    case VrButtonId::StickDown:  return portuguese ? "Baixo" : "Down";
+    case VrButtonId::StickLeft:  return portuguese ? "Esq" : "Left";
+    case VrButtonId::StickRight: return portuguese ? "Dir" : "Right";
+    case VrButtonId::None:
+    default:                     return "";
+    }
+}
+
 CalloutScene ControllerCalloutLayout::buildScene(
     const KeybindProfile& profile,
     const VrFrameState& vrState,
     bool portuguese,
-    bool showCompanionCards) {
+    bool showCompanionCards,
+    const std::vector<std::string>& activeEntryIds) {
     CalloutScene scene{};
     if (!vrState.hmdValid) {
         return scene;
@@ -180,15 +208,81 @@ CalloutScene ControllerCalloutLayout::buildScene(
     };
 
     auto ensurePin = [&](const VrInputSlot& slot, const Vec3& pos, uint32_t col) {
-        if (scene.pins.size() >= kMaxPins) {
-            return;
-        }
-        for (const auto& existing : scene.pins) {
+        const bool pressed = VrInputBindingEngine::isSlotPressed(vrState, slot);
+        for (auto& existing : scene.pins) {
             if (existing.slot == slot) {
+                if (!existing.activeHighlight && col != 0xFF94A3B8u && existing.rgbaColor == 0xFF94A3B8u) {
+                    existing.rgbaColor = col;
+                }
+                if (pressed) {
+                    existing.activeHighlight = true;
+                    existing.rgbaColor = 0xFFFACC15u;
+                }
                 return;
             }
         }
-        scene.pins.push_back(CalloutPin{slot, pos, false, col});
+        if (scene.pins.size() >= kMaxPins) {
+            return;
+        }
+        scene.pins.push_back(CalloutPin{
+            slot,
+            pos,
+            pressed,
+            pressed ? 0xFFFACC15u : col,
+            shortButtonPinLabel(slot, portuguese)
+        });
+    };
+
+    // Always emit labeled base physical button pins for each valid controller, plus any pressed inputs.
+    constexpr std::array<VrButtonId, 5> kBaseButtons = {
+        VrButtonId::Primary,
+        VrButtonId::Secondary,
+        VrButtonId::ThumbClick,
+        VrButtonId::Trigger,
+        VrButtonId::Grip
+    };
+    constexpr std::array<VrButtonId, 9> kAllButtons = {
+        VrButtonId::Primary,
+        VrButtonId::Secondary,
+        VrButtonId::ThumbClick,
+        VrButtonId::Trigger,
+        VrButtonId::Grip,
+        VrButtonId::StickUp,
+        VrButtonId::StickDown,
+        VrButtonId::StickLeft,
+        VrButtonId::StickRight
+    };
+    std::vector<VrInputSlot> pressedSlots;
+    for (VrHand hand : {VrHand::Left, VrHand::Right}) {
+        const bool handValid = (hand == VrHand::Left) ? vrState.left.valid : vrState.right.valid;
+        if (!handValid) {
+            continue;
+        }
+        for (VrButtonId b : kBaseButtons) {
+            const VrInputSlot slot{hand, b};
+            ensurePin(slot, getPinPos(slot), 0xFF94A3B8u);
+        }
+        for (VrButtonId b : kAllButtons) {
+            const VrInputSlot slot{hand, b};
+            if (VrInputBindingEngine::isSlotPressed(vrState, slot)) {
+                pressedSlots.push_back(slot);
+                ensurePin(slot, getPinPos(slot), 0xFF94A3B8u);
+            }
+        }
+    }
+
+    auto slotParticipatesInTwoButton = [&](const VrInputSlot& slot) -> bool {
+        for (const auto& e : profile.entries) {
+            if (!e.enabled || !e.trigger.isTwoButton()) {
+                continue;
+            }
+            if ((e.trigger.primary == slot || e.trigger.secondary == slot) &&
+                VrInputBindingEngine::isSlotPressed(vrState, e.trigger.primary) &&
+                VrInputBindingEngine::isSlotPressed(vrState, e.trigger.secondary)) {
+                return true;
+            }
+        }
+        return false;
     };
 
     std::vector<PendingCard> leftCards;
@@ -220,6 +314,21 @@ CalloutScene ControllerCalloutLayout::buildScene(
         pc.card.outputLabel = buildOutputBadge(entry);
         pc.card.isTwoButton = entry.trigger.isTwoButton();
         pc.card.isCompanion = (entry.outputType == ActionOutputType::CompanionAction);
+        if (std::find(activeEntryIds.begin(), activeEntryIds.end(), entry.id) != activeEntryIds.end()) {
+            pc.card.activeHighlight = true;
+        } else if (entry.trigger.isTwoButton()) {
+            if (VrInputBindingEngine::isSlotPressed(vrState, entry.trigger.primary) &&
+                VrInputBindingEngine::isSlotPressed(vrState, entry.trigger.secondary)) {
+                pc.card.activeHighlight = true;
+            }
+        } else if (VrInputBindingEngine::isSlotPressed(vrState, entry.trigger.primary) &&
+                   !slotParticipatesInTwoButton(entry.trigger.primary)) {
+            if (entry.trigger.gesture == VrGesture::WhileHeld ||
+                entry.trigger.gesture == VrGesture::LongHold ||
+                entry.trigger.gesture == VrGesture::Tap1x) {
+                pc.card.activeHighlight = true;
+            }
+        }
         pc.card.widthM = pc.card.isTwoButton ? 0.185f : 0.165f;
         pc.card.heightM = 0.044f;
 
@@ -251,6 +360,55 @@ CalloutScene ControllerCalloutLayout::buildScene(
         }
     }
 
+    // If 2+ inputs are pressed simultaneously and no enabled 2-button combo matches any active pair,
+    // display a prominent two-line "No Binding Assigned" notice connecting the lit buttons.
+    if (pressedSlots.size() >= 2) {
+        bool hasBoundTwoButtonMatch = false;
+        for (const auto& entry : profile.entries) {
+            if (!entry.enabled || !entry.trigger.isTwoButton()) {
+                continue;
+            }
+            if (VrInputBindingEngine::isSlotPressed(vrState, entry.trigger.primary) &&
+                VrInputBindingEngine::isSlotPressed(vrState, entry.trigger.secondary)) {
+                hasBoundTwoButtonMatch = true;
+                break;
+            }
+        }
+        if (!hasBoundTwoButtonMatch) {
+            const VrInputSlot& s1 = pressedSlots[0];
+            const VrInputSlot& s2 = pressedSlots[1];
+            PendingCard notice{};
+            notice.card.entryId = "__unbound_combo__";
+            notice.card.title = portuguese ? "Sem Bind Configurado" : "No Binding Assigned";
+            notice.card.inputLabel = formatVrSlotLabel(s1, portuguese) + " + " + formatVrSlotLabel(s2, portuguese);
+            notice.card.modeBadge = portuguese ? "SEM ACAO" : "UNBOUND";
+            notice.card.outputLabel = "--";
+            notice.card.isTwoButton = true;
+            notice.card.isCompanion = false;
+            notice.card.activeHighlight = true;
+            notice.card.isUnboundNotice = true;
+            notice.card.widthM = 0.195f;
+            notice.card.heightM = 0.048f;
+            notice.slot1 = s1;
+            notice.slot2 = s2;
+            notice.pin1 = getPinPos(s1);
+            notice.pin2 = getPinPos(s2);
+            notice.sortKey = 1e6f;
+            ensurePin(s1, notice.pin1, 0xFFEF4444u);
+            ensurePin(s2, notice.pin2, 0xFFEF4444u);
+            if (s1.hand != s2.hand) {
+                notice.card.side = CalloutSide::Center;
+                centerCards.insert(centerCards.begin(), std::move(notice));
+            } else if (s1.hand == VrHand::Left) {
+                notice.card.side = CalloutSide::Left;
+                leftCards.insert(leftCards.begin(), std::move(notice));
+            } else {
+                notice.card.side = CalloutSide::Right;
+                rightCards.insert(rightCards.begin(), std::move(notice));
+            }
+        }
+    }
+
     const Vec3 leftBase{vrState.left.pose.m[0][3], vrState.left.pose.m[1][3], vrState.left.pose.m[2][3]};
     const Vec3 rightBase{vrState.right.pose.m[0][3], vrState.right.pose.m[1][3], vrState.right.pose.m[2][3]};
 
@@ -259,16 +417,16 @@ CalloutScene ControllerCalloutLayout::buildScene(
             return a.sortKey > b.sortKey;
         });
         const size_t n = list.size();
-        const float rowSpacing = 0.056f;
+        const float rowSpacing = 0.072f;
         for (size_t i = 0; i < n; ++i) {
             // Split into 2 tidy vertical columns if there are more than 5 cards on one hand.
             const size_t colIdx = (n > 5) ? (i / 5) : 0;
             const size_t rowInCol = (n > 5) ? (i % 5) : i;
             const size_t rowsThisCol = (n > 5) ? std::min<size_t>(5, n - colIdx * 5) : n;
             const float centerRow = (static_cast<float>(rowsThisCol) - 1.0f) * 0.5f;
-            const float vOff = (centerRow - static_cast<float>(rowInCol)) * rowSpacing + 0.08f;
-            const float uOff = lateralSign * (0.20f + static_cast<float>(colIdx) * 0.195f);
-            const float fOff = 0.02f;
+            const float vOff = (centerRow - static_cast<float>(rowInCol)) * rowSpacing + 0.09f;
+            const float uOff = lateralSign * (0.24f + static_cast<float>(colIdx) * 0.225f);
+            const float fOff = -0.025f;
             list[i].card.centerWorld = {
                 basePos.x + viewRight.x * uOff + viewUp.x * vOff + hmdForward.x * fOff,
                 basePos.y + viewRight.y * uOff + viewUp.y * vOff + hmdForward.y * fOff,
@@ -293,31 +451,41 @@ CalloutScene ControllerCalloutLayout::buildScene(
         } else {
             bridgeBase = rightBase;
         }
-        const float rowSpacing = 0.056f;
+        const float rowSpacing = 0.072f;
         for (size_t i = 0; i < centerCards.size(); ++i) {
-            const float vOff = 0.21f + static_cast<float>(i) * rowSpacing;
+            const float vOff = 0.22f + static_cast<float>(i) * rowSpacing;
             centerCards[i].card.centerWorld = {
-                bridgeBase.x + viewUp.x * vOff + hmdForward.x * 0.03f,
-                bridgeBase.y + viewUp.y * vOff + hmdForward.y * 0.03f,
-                bridgeBase.z + viewUp.z * vOff + hmdForward.z * 0.03f
+                bridgeBase.x + viewUp.x * vOff - hmdForward.x * 0.020f,
+                bridgeBase.y + viewUp.y * vOff - hmdForward.y * 0.020f,
+                bridgeBase.z + viewUp.z * vOff - hmdForward.z * 0.020f
             };
         }
     }
 
-    // Collect up to kMaxCards total cleanly prioritized.
+    // Collect up to kMaxCards total cleanly prioritized (keep any live unbound notice at the front).
     std::vector<PendingCard> allCards;
     allCards.reserve(leftCards.size() + rightCards.size() + centerCards.size());
-    for (auto& c : centerCards) allCards.push_back(std::move(c));
-    for (auto& c : leftCards) allCards.push_back(std::move(c));
-    for (auto& c : rightCards) allCards.push_back(std::move(c));
+    auto pushByNotice = [&](std::vector<PendingCard>& src, bool wantNotice) {
+        for (auto& c : src) {
+            if (c.card.isUnboundNotice == wantNotice) {
+                allCards.push_back(std::move(c));
+            }
+        }
+    };
+    pushByNotice(centerCards, true);
+    pushByNotice(leftCards, true);
+    pushByNotice(rightCards, true);
+    pushByNotice(centerCards, false);
+    pushByNotice(leftCards, false);
+    pushByNotice(rightCards, false);
     if (allCards.size() > kMaxCards) {
         allCards.resize(kMaxCards);
     }
 
     // Strict iterative AABB repulsion in HMD billboard plane (u, v) so NO two cards ever overlap.
     const Vec3 origin{vrState.hmdSeatedPose.m[0][3], vrState.hmdSeatedPose.m[1][3], vrState.hmdSeatedPose.m[2][3]};
-    const float marginM = 0.012f;
-    for (int iter = 0; iter < 28; ++iter) {
+    const float marginM = 0.024f;
+    for (int iter = 0; iter < 36; ++iter) {
         bool anyMoved = false;
         for (size_t i = 0; i < allCards.size(); ++i) {
             for (size_t j = i + 1; j < allCards.size(); ++j) {
@@ -366,14 +534,23 @@ CalloutScene ControllerCalloutLayout::buildScene(
     for (auto& pc : allCards) {
         pc.card.pose = buildBillboardPose(pc.card.centerWorld, viewRight, viewUp, viewFaceEye);
         const uint32_t col = colorForCard(pc.card);
+        const uint32_t secondaryCol = pc.card.isUnboundNotice
+            ? 0xFFF87171u
+            : (pc.card.activeHighlight ? 0xFFFDE047u : 0xFFF59E0Bu);
 
         if (scene.lines.size() < kMaxLines) {
-            const Vec3 anchor1 = pickCardBorderAnchor(pc.card, viewRight, viewUp, pc.pin1);
-            scene.lines.push_back(CalloutLine{pc.pin1, anchor1, col, false});
+            Vec3 anchor1 = pickCardBorderAnchor(pc.card, viewRight, viewUp, pc.pin1);
+            anchor1.x -= viewFaceEye.x * 0.006f;
+            anchor1.y -= viewFaceEye.y * 0.006f;
+            anchor1.z -= viewFaceEye.z * 0.006f;
+            scene.lines.push_back(CalloutLine{pc.pin1, anchor1, col, false, pc.card.activeHighlight});
         }
         if (pc.card.isTwoButton && scene.lines.size() < kMaxLines) {
-            const Vec3 anchor2 = pickCardBorderAnchor(pc.card, viewRight, viewUp, pc.pin2);
-            scene.lines.push_back(CalloutLine{pc.pin2, anchor2, 0xFFF59E0Bu, true});
+            Vec3 anchor2 = pickCardBorderAnchor(pc.card, viewRight, viewUp, pc.pin2);
+            anchor2.x -= viewFaceEye.x * 0.006f;
+            anchor2.y -= viewFaceEye.y * 0.006f;
+            anchor2.z -= viewFaceEye.z * 0.006f;
+            scene.lines.push_back(CalloutLine{pc.pin2, anchor2, secondaryCol, true, pc.card.activeHighlight});
         }
         scene.cards.push_back(std::move(pc.card));
     }
